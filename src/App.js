@@ -166,9 +166,8 @@ function HomeScreen({onPlayAI, onPlayFriends}){
 
 // ─── Friends Lobby ────────────────────────────────────────────────────────────
 function FriendsLobby({scoreLimit, onStart, onBack}){
-  const [mode,    setMode]    = useState(null);       // "create" | "join"
+  const [mode,    setMode]    = useState(null);
   const [myName,  setMyName]  = useState("");
-  const [code,    setCode]    = useState("");
   const [joinCode,setJoinCode]= useState("");
   const [room,    setRoom]    = useState(null);
   const [error,   setError]   = useState("");
@@ -183,7 +182,6 @@ function FriendsLobby({scoreLimit, onStart, onBack}){
       maxPlayers:maxP, scoreLimit, started:false,
     };
     ROOMS[c]=newRoom;
-    setCode(c);
     setRoom(newRoom);
     setError("");
   }
@@ -200,7 +198,6 @@ function FriendsLobby({scoreLimit, onStart, onBack}){
     r.players=[...r.players,myName.trim()];
     ROOMS[c]=r;
     setRoom({...r});
-    setCode(c);
     setError("");
   }
 
@@ -534,7 +531,6 @@ function GameScreen({players, scoreLimit, isFriendsMode, onQuit}){
   if(gameWinner) return <GameOverBanner winner={gameWinner} onPlayAgain={()=>{setGameWinner(null);onQuit();}} onQuit={onQuit}/>;
 
   if(roundResult){
-    const sorted=[...roundResult.results].sort((a,b)=>a.pts-b.pts);
     return(
       <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f59e0b,#d97706)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif",padding:16}}>
         <div style={{background:"#fff",borderRadius:20,padding:"22px 20px",maxWidth:440,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
