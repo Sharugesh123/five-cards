@@ -423,8 +423,35 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [showRules,setShowRules]=useState(false);
   const [showGate,setShowGate]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
+  const [timeLeft,setTimeLeft]=useState(30);
   const unsubRef=useRef(null);
   const prevTurnRef=useRef(null);
+  const timerRef=useRef(null);
+
+  function startTimer(){
+    clearInterval(timerRef.current);
+    setTimeLeft(30);
+    timerRef.current=setInterval(()=>{
+      setTimeLeft(p=>{
+        if(p<=1){
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return p-1;
+      });
+    },1000);
+  }
+  useEffect(()=>()=>clearInterval(timerRef.current),[]);
+
+  // Auto-skip when timer hits 0 (online)
+  useEffect(()=>{
+    if(!gs||!gs.activePlayers||timeLeft!==0)return;
+    const curPlayer=gs.activePlayers[gs.turnIdx];
+    if(curPlayer!==myName)return;
+    // skip turn
+    const next=(gs.turnIdx+1)%gs.activePlayers.length;
+    update(ref(db,`rooms/${roomCode}/gameState`),{turnIdx:next,lastAction:Date.now()});
+  },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
     const unsub=onValue(ref(db,`rooms/${roomCode}/gameState`),(snap)=>{
@@ -437,6 +464,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         setDrawFrom(null);setDropIdxs([]);
         setShowGate(true);
         setMsg("Pick source, select drop card, then SWAP");
+        startTimer();
       }
       if(g.roundResult?.justElim?.length>0 && !g.roundResult.shown){
         setNewlyElim(g.roundResult.justElim);
@@ -495,6 +523,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 
   async function doShow(){
     if(!isMyTurn)return;
+    clearInterval(timerRef.current);
     const claimerHand=myHand;
     const wc=wildCard||null;
     const results=activePlayers.map(name=>({name,hand:hands[name]||[],pts:handTotal(hands[name]||[],wc)}));
@@ -587,7 +616,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   }
 
   if(newlyElim.length>0) return <EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
-  if(showGate&&isMyTurn) return <TurnGate playerName={myName} onReady={()=>setShowGate(false)}/>;
+  if(showGate&&isMyTurn) return <TurnGate playerName={myName} onReady={()=>{setShowGate(false);startTimer();}}/>;
 
   const sl=scoreLimit||gs.scoreLimit||300;
 
@@ -678,9 +707,18 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         </div>
       )}
 
-      <div style={{textAlign:"center",padding:"4px 14px 4px"}}>
-        <div style={{display:"inline-block",background:"rgba(0,0,0,.5)",color:"#facc15",borderRadius:10,padding:"6px 16px",fontSize:13,fontWeight:700}}>
-          {isMyTurn?msg:`${currentPlayer}'s turn...`}
+      {/* Timer bar */}
+      <div style={{padding:"4px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{flex:1,height:8,background:"rgba(0,0,0,.3)",borderRadius:4,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${(timeLeft/30)*100}%`,background:timeLeft>10?"#4ade80":timeLeft>5?"#facc15":"#ef4444",borderRadius:4,transition:"width 1s linear"}}/>
+          </div>
+          <div style={{fontSize:14,fontWeight:900,color:timeLeft<=10?"#ef4444":"#fff",minWidth:32,textAlign:"right"}}>{timeLeft}s</div>
+        </div>
+        <div style={{textAlign:"center",marginTop:4}}>
+          <div style={{display:"inline-block",background:"rgba(0,0,0,.5)",color:"#facc15",borderRadius:10,padding:"5px 14px",fontSize:13,fontWeight:700}}>
+            {isMyTurn?msg:`${currentPlayer}'s turn...`}
+          </div>
         </div>
       </div>
 
@@ -731,7 +769,21 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [newlyElim,setNewlyElim]=useState([]);
   const [gameWinner,setGameWinner]=useState(null);
   const [wildCard,setWildCard]=useState(null);
+  const [timeLeft,setTimeLeft]=useState(30);
   const aiTimer=useRef(null);
+  const turnTimerRef=useRef(null);
+
+  function startTurnTimer(){
+    clearInterval(turnTimerRef.current);
+    setTimeLeft(30);
+    turnTimerRef.current=setInterval(()=>{
+      setTimeLeft(p=>{
+        if(p<=1){ clearInterval(turnTimerRef.current); return 0; }
+        return p-1;
+      });
+    },1000);
+  }
+  useEffect(()=>()=>clearInterval(turnTimerRef.current),[]);
 
 
   function deal(ap){
@@ -747,9 +799,21 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     setStock(dr.slice(c2+1));setPile([dr[c2]]);setHands(h2);
     setTurnIdx(0);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
     setMsg("Pick source, select drop card, then SWAP");
+    startTurnTimer();
   }
 
   useEffect(()=>{deal();},[]);// eslint-disable-line
+
+  // Auto-skip human turn when timer hits 0
+  useEffect(()=>{
+    if(timeLeft!==0||roundResult||gameWinner)return;
+    if(!isMyTurn)return;
+    clearInterval(turnTimerRef.current);
+    const next=(turnIdx+1)%active.length;
+    setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
+    setMsg(`Time's up! ${active[next]=== YOU?"Your turn":""+active[next]+"'s turn..."}`);
+    if(!isAI(active[next])) startTurnTimer();
+  },[timeLeft]);// eslint-disable-line
 
   const currentPlayer=active[turnIdx];
   const isMyTurn=currentPlayer===YOU;
@@ -778,6 +842,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       setHands(p=>({...p,[currentPlayer]:nh}));
       const next=(turnIdx+1)%active.length;
       setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
+      if(!isAI(active[next])) startTurnTimer();
       setMsg(isAI(active[next])?`${active[next]}'s turn...`:"Pick source, select drop card, then SWAP");
     },1200);
     return()=>clearTimeout(aiTimer.current);
@@ -833,11 +898,13 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     np=[...np,...dropping];
     setStock(ns);setPile(np);
     setHands(p=>({...p,[YOU]:[...kept,drew]}));
+    clearInterval(turnTimerRef.current);
     const next=(turnIdx+1)%active.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
+    if(!isAI(active[next])) startTurnTimer();
     setMsg(isAI(active[next])?`${active[next]}'s turn...`:"Pick source, select drop card, then SWAP");
   }
-  function doShow(){if(!isMyTurn)return;handleClaim(YOU,hands[YOU],wildCard);}
+  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);handleClaim(YOU,hands[YOU],wildCard);}
 
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
@@ -957,8 +1024,17 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
           </div>
         </div>
       )}
-      <div style={{textAlign:"center",padding:"4px 14px 4px"}}>
-        <div style={{display:"inline-block",background:"rgba(0,0,0,.5)",color:"#facc15",borderRadius:10,padding:"6px 16px",fontSize:13,fontWeight:700}}>{msg}</div>
+      {/* Timer bar */}
+      <div style={{padding:"4px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{flex:1,height:8,background:"rgba(0,0,0,.3)",borderRadius:4,overflow:"hidden"}}>
+            <div style={{height:"100%",width:isMyTurn?`${(timeLeft/30)*100}%`:"0%",background:timeLeft>10?"#4ade80":timeLeft>5?"#facc15":"#ef4444",borderRadius:4,transition:"width 1s linear"}}/>
+          </div>
+          <div style={{fontSize:14,fontWeight:900,color:isMyTurn&&timeLeft<=10?"#ef4444":"#fff",minWidth:32,textAlign:"right"}}>{isMyTurn?`${timeLeft}s`:"--"}</div>
+        </div>
+        <div style={{textAlign:"center",marginTop:4}}>
+          <div style={{display:"inline-block",background:"rgba(0,0,0,.5)",color:"#facc15",borderRadius:10,padding:"5px 14px",fontSize:13,fontWeight:700}}>{msg}</div>
+        </div>
       </div>
       <div style={{background:"rgba(0,0,0,.25)",padding:"9px 12px 14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
