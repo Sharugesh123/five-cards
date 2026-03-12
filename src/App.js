@@ -789,9 +789,13 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const claimerPts=results.find(r=>r.name===claimerName).pts;
     const claimerWon=claimerPts===lowestPts;
     const newScores={...scores};
-    // Only claimer is affected: 0 pts if correct, fixed penalty if wrong
-    if(claimerWon){ newScores[claimerName]=(newScores[claimerName]||0)+0; }
-    else{ newScores[claimerName]=(newScores[claimerName]||0)+penaltyPoints; }
+    if(claimerWon){
+      // Correct SHOW: claimer gets 0, others add their hand total
+      results.forEach(r=>{ if(r.name!==claimerName) newScores[r.name]=(newScores[r.name]||0)+r.pts; });
+    } else {
+      // Wrong SHOW: only claimer gets fixed penalty, others get 0
+      newScores[claimerName]=(newScores[claimerName]||0)+penaltyPoints;
+    }
     setScores(newScores);
     const justElim=active.filter(n=>newScores[n]>=scoreLimit&&!eliminated.includes(n));
     const newElim=[...eliminated,...justElim];
