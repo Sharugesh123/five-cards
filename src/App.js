@@ -29,7 +29,7 @@ function makeDeck(){
 }
 function shuffleDeck(d){const a=[...d];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 function cardPts(card,jokerCard){
-  if(jokerCard&&card.rank===jokerCard.rank&&card.suit===jokerCard.suit)return 0;
+  if(jokerCard&&card.rank===jokerCard.rank)return 0;
   return card.pts;
 }
 function handTotal(cards,jokerCard){return cards.reduce((s,c)=>s+cardPts(c,jokerCard),0);}
@@ -80,7 +80,7 @@ function RulesModal({onClose,limit}){
           ["Your Turn","Tap Stock OR top Discard (green=draw source). Tap a hand card (yellow=drop). Tap SWAP!"],
           ["Multi-Drop","Select multiple same-rank cards to drop all at once."],
           ["SHOW","Tap SHOW to claim lowest hand. Wrong = double penalty."],
-          ["Wild Card","One card is revealed face-up at the start of each round. Any card of that rank AND suit is worth 0 points!"],
+          ["Wild Card","One card is revealed face-up at the start of each round. ALL cards of that rank are worth 0 points for that round!"],
           ["Friends Mode","Create a room → share 5-letter code → friends join from any device → play together online!"],
         ].map(([t,b])=>(
           <div key={t} style={{marginBottom:12}}>
