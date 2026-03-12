@@ -66,7 +66,7 @@ function PlayingCard({card,faceDown,selected,glowing,small,onClick,badge}){
 }
 
 // ─── Rules Modal ──────────────────────────────────────────────────────────────
-function RulesModal({onClose,limit}){
+function RulesModal({onClose,limit,penalty}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div style={{background:"#fff",borderRadius:16,padding:24,maxWidth:480,width:"100%",maxHeight:"85vh",overflowY:"auto"}}>
@@ -79,7 +79,7 @@ function RulesModal({onClose,limit}){
           ["Card Points","A=1 · 2–9=face value · 10/J/Q/K=10 · Wild card shown at start=0"],
           ["Your Turn","Tap Stock OR top Discard (green=draw source). Tap a hand card (yellow=drop). Tap SWAP!"],
           ["Multi-Drop","Select multiple same-rank cards to drop all at once."],
-          ["SHOW","Tap SHOW to claim lowest hand. Wrong = double penalty."],
+          ["SHOW",`Tap SHOW to claim lowest hand. Correct = 0 pts for you (win!). Wrong SHOW = +${penalty||50} pts penalty added to your score. Others always get 0 pts.`],
           ["Wild Card","One card is revealed face-up at the start of each round. ALL cards of that rank are worth 0 points for that round!"],
           ["Friends Mode","Create a room → share 5-letter code → friends join from any device → play together online!"],
         ].map(([t,b])=>(
@@ -142,6 +142,8 @@ function HomeScreen({onPlayAI,onPlayFriends}){
   const [players,setPlayers]=useState(2);
   const [limit,setLimit]=useState(300);
   const [customInput,setCustomInput]=useState("300");
+  const [penalty,setPenalty]=useState(50);
+  const [penaltyInput,setPenaltyInput]=useState("50");
   const [rules,setRules]=useState(false);
 
   function handleLimitChange(e){
@@ -149,6 +151,12 @@ function HomeScreen({onPlayAI,onPlayFriends}){
     setCustomInput(val);
     const num=parseInt(val,10);
     if(num>=10&&num<=9999) setLimit(num);
+  }
+  function handlePenaltyChange(e){
+    const val=e.target.value.replace(/[^0-9]/g,"");
+    setPenaltyInput(val);
+    const num=parseInt(val,10);
+    if(num>=1&&num<=9999) setPenalty(num);
   }
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f59e0b,#d97706)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif",padding:20}}>
@@ -160,11 +168,8 @@ function HomeScreen({onPlayAI,onPlayFriends}){
         <div style={{background:"rgba(255,255,255,.92)",borderRadius:16,padding:"16px 18px",marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>💀 Elimination Score</div>
           <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-            <input
-              type="text" inputMode="numeric" value={customInput}
-              onChange={handleLimitChange}
-              style={{flex:1,padding:"10px 14px",borderRadius:10,border:"2px solid #fca5a5",fontSize:22,fontWeight:900,color:"#7f1d1d",textAlign:"center",outline:"none",background:"#fff7f7",width:"100%",boxSizing:"border-box"}}
-            />
+            <input type="text" inputMode="numeric" value={customInput} onChange={handleLimitChange}
+              style={{flex:1,padding:"10px 14px",borderRadius:10,border:"2px solid #fca5a5",fontSize:22,fontWeight:900,color:"#7f1d1d",textAlign:"center",outline:"none",background:"#fff7f7",width:"100%",boxSizing:"border-box"}}/>
             <span style={{fontSize:13,fontWeight:700,color:"#92400e",whiteSpace:"nowrap"}}>pts</span>
           </div>
           <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:6}}>
@@ -179,30 +184,48 @@ function HomeScreen({onPlayAI,onPlayFriends}){
         </div>
 
         <div style={{background:"rgba(255,255,255,.92)",borderRadius:16,padding:"16px 18px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#dc2626",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>⚠️ Wrong SHOW Penalty</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+            <input type="text" inputMode="numeric" value={penaltyInput} onChange={handlePenaltyChange}
+              style={{flex:1,padding:"10px 14px",borderRadius:10,border:"2px solid #fca5a5",fontSize:22,fontWeight:900,color:"#7f1d1d",textAlign:"center",outline:"none",background:"#fff7f7",width:"100%",boxSizing:"border-box"}}/>
+            <span style={{fontSize:13,fontWeight:700,color:"#92400e",whiteSpace:"nowrap"}}>pts</span>
+          </div>
+          <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:6}}>
+            {[10,20,30,50,100].map(v=>(
+              <button key={v} onClick={()=>{setPenalty(v);setPenaltyInput(String(v));}}
+                style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:900,
+                  background:penalty===v?"#dc2626":"#fef2f2",color:penalty===v?"#fff":"#7f1d1d",
+                  transform:penalty===v?"scale(1.05)":"scale(1)",transition:"all .15s"}}>{v}</button>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:"#92400e"}}>Wrong SHOW = <strong>+{penalty} pts</strong> penalty · Correct SHOW = <strong>0 pts</strong> 🎉</div>
+        </div>
+
+        <div style={{background:"rgba(255,255,255,.92)",borderRadius:16,padding:"16px 18px",marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>🤖 Play vs AI</div>
           <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:12}}>
             {[2,3,4].map(n=>(
               <button key={n} onClick={()=>setPlayers(n)} style={{width:50,height:50,borderRadius:12,border:"none",cursor:"pointer",fontSize:20,fontWeight:900,background:players===n?"#d97706":"#fef3c7",color:players===n?"#fff":"#78350f",transform:players===n?"scale(1.1)":"scale(1)"}}>{n}</button>
             ))}
           </div>
-          <button onClick={()=>onPlayAI(players,limit)} style={{width:"100%",background:"#1e3a5f",color:"#facc15",border:"none",borderRadius:12,padding:"13px",fontSize:16,fontWeight:900,cursor:"pointer"}}>▶ Play vs AI</button>
+          <button onClick={()=>onPlayAI(players,limit,penalty)} style={{width:"100%",background:"#1e3a5f",color:"#facc15",border:"none",borderRadius:12,padding:"13px",fontSize:16,fontWeight:900,cursor:"pointer"}}>▶ Play vs AI</button>
         </div>
 
         <div style={{background:"rgba(255,255,255,.92)",borderRadius:16,padding:"16px 18px",marginBottom:12}}>
           <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>👫 Play with Friends</div>
           <div style={{fontSize:12,color:"#555",marginBottom:10}}>🌐 Real online multiplayer — play from different devices!</div>
-          <button onClick={()=>onPlayFriends(limit)} style={{width:"100%",background:"linear-gradient(135deg,#7c3aed,#5b21b6)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:16,fontWeight:900,cursor:"pointer"}}>🎮 Create / Join Room</button>
+          <button onClick={()=>onPlayFriends(limit,penalty)} style={{width:"100%",background:"linear-gradient(135deg,#7c3aed,#5b21b6)",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:16,fontWeight:900,cursor:"pointer"}}>🎮 Create / Join Room</button>
         </div>
 
         <button onClick={()=>setRules(true)} style={{width:"100%",background:"rgba(255,255,255,.2)",color:"#fff",border:"2px solid rgba(255,255,255,.5)",borderRadius:12,padding:"11px",fontSize:14,fontWeight:700,cursor:"pointer"}}>📋 Rules</button>
       </div>
-      {rules&&<RulesModal onClose={()=>setRules(false)} limit={limit}/>}
+      {rules&&<RulesModal onClose={()=>setRules(false)} limit={limit} penalty={penalty}/>}
     </div>
   );
 }
 
 // ─── Firebase Friends Lobby ───────────────────────────────────────────────────
-function FriendsLobby({scoreLimit,onStart,onBack}){
+function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
   const [mode,    setMode]   =useState(null);
   const [myName,  setMyName] =useState("");
   const [joinCode,setJoinCode]=useState("");
@@ -222,6 +245,7 @@ function FriendsLobby({scoreLimit,onStart,onBack}){
       players:[myName.trim()],
       maxPlayers:maxP,
       scoreLimit,
+      penalty,
       started:false,
       createdAt:Date.now(),
     };
@@ -278,6 +302,7 @@ function FriendsLobby({scoreLimit,onStart,onBack}){
       scores:Object.fromEntries(ap.map(p=>[p,0])),
       eliminated:[],
       activePlayers:ap,
+      penalty:room.penalty||50,
       turnIdx:0,
       round:1,
       roundResult:null,
@@ -519,7 +544,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
             <div style={{fontSize:44}}>{roundResult.claimerWon?"🎉":"😬"}</div>
             <h2 style={{margin:"4px 0",fontSize:20,fontWeight:900}}>Round {round}</h2>
             <p style={{margin:0,color:roundResult.claimerWon?"#059669":"#dc2626",fontWeight:700,fontSize:13}}>
-              {roundResult.claimerWon?`${roundResult.claimerName} wins! (${roundResult.claimerPts} pts)`:`${roundResult.claimerName} mis-claimed! (had ${roundResult.claimerPts}, min ${roundResult.lowestPts})`}
+              {roundResult.claimerWon?`${roundResult.claimerName} wins! (+0 pts) 🎉`:`${roundResult.claimerName} wrong SHOW! (+${gs.penalty||50} pts penalty) 😬`}
             </p>
           </div>
           <div style={{marginBottom:12}}>
@@ -685,7 +710,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 }
 
 // ─── AI Game Screen ───────────────────────────────────────────────────────────
-function AIGameScreen({players,scoreLimit,onQuit}){
+function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const allPlayers=players;
   const YOU=players[0];
   const isAI=name=>name!==YOU;
@@ -764,8 +789,9 @@ function AIGameScreen({players,scoreLimit,onQuit}){
     const claimerPts=results.find(r=>r.name===claimerName).pts;
     const claimerWon=claimerPts===lowestPts;
     const newScores={...scores};
-    if(claimerWon){results.forEach(r=>{if(r.name!==claimerName)newScores[r.name]=(newScores[r.name]||0)+r.pts;});}
-    else{results.forEach(r=>{newScores[r.name]=(newScores[r.name]||0)+(r.name===claimerName?r.pts*2:r.pts);});}
+    // Only claimer is affected: 0 pts if correct, fixed penalty if wrong
+    if(claimerWon){ newScores[claimerName]=(newScores[claimerName]||0)+0; }
+    else{ newScores[claimerName]=(newScores[claimerName]||0)+penaltyPoints; }
     setScores(newScores);
     const justElim=active.filter(n=>newScores[n]>=scoreLimit&&!eliminated.includes(n));
     const newElim=[...eliminated,...justElim];
@@ -823,7 +849,7 @@ function AIGameScreen({players,scoreLimit,onQuit}){
             <div style={{fontSize:44}}>{roundResult.claimerWon?"🎉":"😬"}</div>
             <h2 style={{margin:"4px 0",fontSize:20,fontWeight:900}}>Round {round}</h2>
             <p style={{margin:0,color:roundResult.claimerWon?"#059669":"#dc2626",fontWeight:700,fontSize:13}}>
-              {roundResult.claimerWon?`${roundResult.claimerName} wins! (${roundResult.claimerPts} pts)`:`${roundResult.claimerName} mis-claimed!`}
+              {roundResult.claimerWon?`${roundResult.claimerName} wins! (+0 pts) 🎉`:`${roundResult.claimerName} wrong SHOW! (+${penaltyPoints} pts penalty) 😬`}
             </p>
           </div>
           <div style={{marginBottom:12}}>
@@ -955,16 +981,16 @@ function AIGameScreen({players,scoreLimit,onQuit}){
 // ─── App Root ─────────────────────────────────────────────────────────────────
 export default function App(){
   const [screen,setScreen]=useState("home");
-  const [config,setConfig]=useState({players:["You","Muthu"],limit:300,roomCode:null,myName:null});
+  const [config,setConfig]=useState({players:["You","Muthu"],limit:300,penalty:50,roomCode:null,myName:null});
 
   if(screen==="home") return(
     <HomeScreen
-      onPlayAI={(n,l)=>{
-        setConfig({players:["You",...AI_NAMES.slice(0,n-1)],limit:l,roomCode:null,myName:null});
+      onPlayAI={(n,l,p)=>{
+        setConfig({players:["You",...AI_NAMES.slice(0,n-1)],limit:l,penalty:p||50,roomCode:null,myName:null});
         setScreen("ai");
       }}
-      onPlayFriends={(l)=>{
-        setConfig(p=>({...p,limit:l}));
+      onPlayFriends={(l,p)=>{
+        setConfig(prev=>({...prev,limit:l,penalty:p||50}));
         setScreen("lobby");
       }}
     />
@@ -973,6 +999,7 @@ export default function App(){
   if(screen==="lobby") return(
     <FriendsLobby
       scoreLimit={config.limit}
+      penalty={config.penalty||50}
       onStart={(players,limit,roomCode,myName)=>{
         setConfig(p=>({...p,players,limit,roomCode,myName}));
         setScreen("online");
@@ -993,6 +1020,7 @@ export default function App(){
     <AIGameScreen
       players={config.players}
       scoreLimit={config.limit}
+      penaltyPoints={config.penalty||50}
       onQuit={()=>setScreen("home")}
     />
   );
