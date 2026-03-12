@@ -411,7 +411,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     </div>
   );
 
-  const {stock,pile,hands,scores,activePlayers,turnIdx,round,roundResult,gameWinner,eliminated,scoreLimit} = gs;
+  const {stock,pile,hands,scores,activePlayers,turnIdx,round,roundResult,gameWinner,eliminated,scoreLimit,wildCard} = gs;
   const currentPlayer=activePlayers[turnIdx];
   const isMyTurn=currentPlayer===myName;
   const myHand=hands?.[myName]||[];
@@ -467,7 +467,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   async function doShow(){
     if(!isMyTurn)return;
     const claimerHand=myHand;
-    const wc=gs.wildCard||null;
+    const wc=wildCard||null;
     const results=activePlayers.map(name=>({name,hand:hands[name]||[],pts:handTotal(hands[name]||[],wc)}));
     const claimerPts=handTotal(claimerHand,wc);
     const lowestPts=Math.min(...results.map(r=>r.pts));
@@ -616,8 +616,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#facc15",marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>🃏 Wild (0pt)</div>
-          {gs.wildCard
-            ?<PlayingCard card={gs.wildCard}/>
+          {wildCard
+            ?<PlayingCard card={wildCard}/>
             :<div style={{width:68,height:100,borderRadius:8,border:"2px dashed rgba(255,255,255,.4)"}}/>
           }
         </div>
