@@ -141,7 +141,15 @@ function TurnGate({playerName,onReady}){
 function HomeScreen({onPlayAI,onPlayFriends}){
   const [players,setPlayers]=useState(2);
   const [limit,setLimit]=useState(300);
+  const [customInput,setCustomInput]=useState("300");
   const [rules,setRules]=useState(false);
+
+  function handleLimitChange(e){
+    const val=e.target.value.replace(/[^0-9]/g,"");
+    setCustomInput(val);
+    const num=parseInt(val,10);
+    if(num>=10&&num<=9999) setLimit(num);
+  }
   return(
     <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f59e0b,#d97706)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif",padding:20}}>
       <div style={{background:"rgba(255,255,255,.15)",borderRadius:24,padding:"32px 26px",textAlign:"center",maxWidth:380,width:"100%",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,.3)"}}>
@@ -150,13 +158,24 @@ function HomeScreen({onPlayAI,onPlayFriends}){
         <p style={{margin:"0 0 24px",color:"rgba(255,255,255,.85)",fontSize:13,letterSpacing:1}}>SWAP · CLAIM · SURVIVE</p>
 
         <div style={{background:"rgba(255,255,255,.92)",borderRadius:16,padding:"16px 18px",marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>Elimination Score</div>
-          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-            {[100,200,300].map(v=>(
-              <button key={v} onClick={()=>setLimit(v)} style={{flex:1,padding:"9px 0",borderRadius:10,border:"none",cursor:"pointer",fontSize:13,fontWeight:900,background:limit===v?"#dc2626":"#fef2f2",color:limit===v?"#fff":"#7f1d1d",transform:limit===v?"scale(1.05)":"scale(1)"}}>{v}</button>
+          <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>💀 Elimination Score</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+            <input
+              type="text" inputMode="numeric" value={customInput}
+              onChange={handleLimitChange}
+              style={{flex:1,padding:"10px 14px",borderRadius:10,border:"2px solid #fca5a5",fontSize:22,fontWeight:900,color:"#7f1d1d",textAlign:"center",outline:"none",background:"#fff7f7",width:"100%",boxSizing:"border-box"}}
+            />
+            <span style={{fontSize:13,fontWeight:700,color:"#92400e",whiteSpace:"nowrap"}}>pts</span>
+          </div>
+          <div style={{display:"flex",gap:6,justifyContent:"center",marginBottom:6}}>
+            {[50,100,200,300,500].map(v=>(
+              <button key={v} onClick={()=>{setLimit(v);setCustomInput(String(v));}}
+                style={{flex:1,padding:"6px 0",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:900,
+                  background:limit===v?"#dc2626":"#fef2f2",color:limit===v?"#fff":"#7f1d1d",
+                  transform:limit===v?"scale(1.05)":"scale(1)",transition:"all .15s"}}>{v}</button>
             ))}
           </div>
-          <div style={{fontSize:11,color:"#92400e",marginTop:7}}>First to <strong>{limit} pts</strong> = eliminated 💀</div>
+          <div style={{fontSize:11,color:"#92400e"}}>First to <strong>{limit} pts</strong> = eliminated 💀</div>
         </div>
 
         <div style={{background:"rgba(255,255,255,.92)",borderRadius:16,padding:"16px 18px",marginBottom:12}}>
