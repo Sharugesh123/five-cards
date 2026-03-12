@@ -18,26 +18,27 @@ const db = getDatabase(firebaseApp);
 // ─── Deck Setup ───────────────────────────────────────────────────────────────
 const SUITS = ["♠","♥","♦","♣"];
 const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
-const RANK_PTS = {A:1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,J:10,Q:10,K:10,Joker:0};
+const RANK_PTS = {A:1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,J:10,Q:10,K:10};
 const AI_NAMES = ["Muthu","Priya","Rajan"];
 
 function genCode(){ return Math.random().toString(36).substring(2,7).toUpperCase(); }
 function makeDeck(){
   const d=[];
   for(const s of SUITS) for(const r of RANKS) d.push({suit:s,rank:r,pts:RANK_PTS[r],id:`${r}-${s}`});
-  d.push({suit:"JK",rank:"Joker",pts:0,id:"joker1"});
-  d.push({suit:"JK",rank:"Joker",pts:0,id:"joker2"});
-  return d;
+  return d; // 52 cards, no Jokers
 }
 function shuffleDeck(d){const a=[...d];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-function handTotal(cards){return cards.reduce((s,c)=>s+c.pts,0);}
+function cardPts(card,jokerCard){
+  if(jokerCard&&card.rank===jokerCard.rank&&card.suit===jokerCard.suit)return 0;
+  return card.pts;
+}
+function handTotal(cards,jokerCard){return cards.reduce((s,c)=>s+cardPts(c,jokerCard),0);}
 
 // ─── Card Component ───────────────────────────────────────────────────────────
 function PlayingCard({card,faceDown,selected,glowing,small,onClick,badge}){
   if(!card)return null;
   const w=small?46:68,h=small?68:100;
   const isRed=card.suit==="♥"||card.suit==="♦";
-  const isJoker=card.rank==="Joker";
   const bc=selected?"#facc15":glowing?"#4ade80":"#d1d5db";
   const bw=(selected||glowing)?3:2;
   const sh=selected?"0 0 14px rgba(250,204,21,.8),0 4px 8px rgba(0,0,0,.3)":glowing?"0 0 14px rgba(74,222,128,.7),0 4px 8px rgba(0,0,0,.3)":"0 2px 6px rgba(0,0,0,.2)";
@@ -52,9 +53,7 @@ function PlayingCard({card,faceDown,selected,glowing,small,onClick,badge}){
               {["♠","♥","♦","♣","♠","♥","♦","♣","♠"].map((s,i)=><div key={i} style={{fontSize:9,color:i%2===0?"#e63946":"#fff",textAlign:"center"}}>{s}</div>)}
             </div>
           </div>
-        ):isJoker?(
-          <><div style={{fontSize:small?16:24,textAlign:"center"}}>🃏</div><div style={{fontSize:small?8:10,textAlign:"center",color:"#f97316",fontWeight:900}}>JOKER</div></>
-        ):(
+):(
           <>
             <div style={{fontSize:small?11:14,fontWeight:900,color:isRed?"#dc2626":"#111",lineHeight:1.1}}>{card.rank}<br/><span style={{fontSize:small?9:11}}>{card.suit}</span></div>
             <div style={{fontSize:small?17:25,textAlign:"center",color:isRed?"#dc2626":"#111"}}>{card.suit}</div>
@@ -77,10 +76,11 @@ function RulesModal({onClose,limit}){
         </div>
         {[
           ["Goal",`Lowest points when someone claims wins the round. Reach ${limit||300} pts = eliminated. Last player standing wins!`],
-          ["Card Points","Joker=0 · A=1 · 2–9=face value · 10/J/Q/K=10"],
+          ["Card Points","A=1 · 2–9=face value · 10/J/Q/K=10 · Wild card shown at start=0"],
           ["Your Turn","Tap Stock OR top Discard (green=draw source). Tap a hand card (yellow=drop). Tap SWAP!"],
           ["Multi-Drop","Select multiple same-rank cards to drop all at once."],
           ["SHOW","Tap SHOW to claim lowest hand. Wrong = double penalty."],
+          ["Wild Card","One card is revealed face-up at the start of each round. Any card of that rank AND suit is worth 0 points!"],
           ["Friends Mode","Create a room → share 5-letter code → friends join from any device → play together online!"],
         ].map(([t,b])=>(
           <div key={t} style={{marginBottom:12}}>
@@ -247,18 +247,20 @@ function FriendsLobby({scoreLimit,onStart,onBack}){
     // Deal cards and save to Firebase
     const ap=room.players;
     const d=shuffleDeck(makeDeck());
+    const wildCard=d[0]; // first card revealed as wild (worth 0)
+    const deckRest=d.slice(1);
     const hands={};let cur=0;
-    for(const name of ap){hands[name]=d.slice(cur,cur+5);cur+=5;}
+    for(const name of ap){hands[name]=deckRest.slice(cur,cur+5);cur+=5;}
     const gameState={
-      stock:d.slice(cur+1),
-      pile:[d[cur]],
+      stock:deckRest.slice(cur+1),
+      pile:[deckRest[cur]],
+      wildCard,
       hands,
       scores:Object.fromEntries(ap.map(p=>[p,0])),
       eliminated:[],
       activePlayers:ap,
       turnIdx:0,
       round:1,
-      log:[],
       roundResult:null,
       gameWinner:null,
       lastAction:Date.now(),
@@ -415,14 +417,26 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const myHand=hands?.[myName]||[];
   const pileTop=pile?.[pile.length-1]||null;
   const readySwap=isMyTurn&&drawFrom!==null&&dropIdxs.length>0;
-  // REMOVED: allPlayers was declared here but not used
+  const allPlayers=gs.allPlayers||activePlayers;
 
   async function pushGs(updates){
     await update(ref(db,`rooms/${roomCode}/gameState`),updates);
   }
 
-  // REMOVED: advanceTurn function was defined here but not used
-  
+  function advanceTurn(newStock,newPile,newHands,newScores,newEliminated,newActive){
+    const next=(turnIdx+1)%newActive.length;
+    pushGs({
+      stock:newStock||stock,
+      pile:newPile||pile,
+      hands:newHands||hands,
+      scores:newScores||scores,
+      eliminated:newEliminated||eliminated,
+      activePlayers:newActive||activePlayers,
+      turnIdx:next,
+      lastAction:Date.now(),
+    });
+  }
+
   function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
   function selPile(){if(!isMyTurn||!pile?.length)return;setDrawFrom(p=>p==="pile"?null:"pile");}
   function toggleDrop(idx){
@@ -446,15 +460,16 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const newHands={...hands,[myName]:[...kept,drew]};
     const next=(turnIdx+1)%activePlayers.length;
     await pushGs({stock:ns,pile:np,hands:newHands,turnIdx:next,lastAction:Date.now(),
-      log:[`${myName}: drop ${dropping.map(c=>c.rank+c.suit).join(",")} → ${drew.rank}${drew.suit}`,...(gs.log||[])].slice(0,6)});
+});
     setDrawFrom(null);setDropIdxs([]);
   }
 
   async function doShow(){
     if(!isMyTurn)return;
     const claimerHand=myHand;
-    const results=activePlayers.map(name=>({name,hand:hands[name]||[],pts:handTotal(hands[name]||[])}));
-    const claimerPts=handTotal(claimerHand);
+    const wc=gs.wildCard||null;
+    const results=activePlayers.map(name=>({name,hand:hands[name]||[],pts:handTotal(hands[name]||[],wc)}));
+    const claimerPts=handTotal(claimerHand,wc);
     const lowestPts=Math.min(...results.map(r=>r.pts));
     const claimerWon=claimerPts===lowestPts;
     const newScores={...scores};
@@ -476,12 +491,14 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   async function nextRound(){
     const ap=gs.activePlayers;
     const d=shuffleDeck(makeDeck());
+    const wildCard=d[0];
+    const deckRest=d.slice(1);
     const h={};let cur=0;
-    for(const name of ap){h[name]=d.slice(cur,cur+5);cur+=5;}
+    for(const name of ap){h[name]=deckRest.slice(cur,cur+5);cur+=5;}
     await pushGs({
-      stock:d.slice(cur+1),pile:[d[cur]],hands:h,
+      stock:deckRest.slice(cur+1),pile:[deckRest[cur]],wildCard,hands:h,
       turnIdx:0,round:(round||1)+1,
-      roundResult:null,log:[],lastAction:Date.now(),
+      roundResult:null,lastAction:Date.now(),
     });
   }
 
@@ -595,7 +612,15 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       </div>
 
       {/* Table */}
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:40}}>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:24,flexWrap:"wrap"}}>
+
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#facc15",marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>🃏 Wild (0pt)</div>
+          {gs.wildCard
+            ?<PlayingCard card={gs.wildCard}/>
+            :<div style={{width:68,height:100,borderRadius:8,border:"2px dashed rgba(255,255,255,.4)"}}/>
+          }
+        </div>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#fff",marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>Stock ({stock?.length||0})</div>
           {stock?.length>0
@@ -633,7 +658,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       {/* My hand */}
       <div style={{background:"rgba(0,0,0,.25)",padding:"9px 12px 14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-          <span style={{color:"#fff",fontWeight:900,fontSize:13}}>You · {handTotal(myHand)} pts</span>
+          <span style={{color:"#fff",fontWeight:900,fontSize:13}}>You · {handTotal(myHand,wildCard)} pts</span>
           {isMyTurn&&(
             <div style={{display:"flex",gap:7}}>
               <button onClick={doSwap} disabled={!readySwap} style={{background:readySwap?"#059669":"#6b7280",color:"#fff",border:"none",borderRadius:10,padding:"8px 13px",fontSize:13,fontWeight:900,cursor:readySwap?"pointer":"not-allowed"}}>⇄ SWAP</button>
@@ -649,11 +674,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         {!isMyTurn&&<div style={{textAlign:"center",marginTop:8,fontSize:12,color:"rgba(255,255,255,.5)",fontWeight:600}}>Waiting for {currentPlayer}...</div>}
       </div>
 
-      {gs.log?.length>0&&(
-        <div style={{position:"fixed",top:56,right:10,background:"rgba(0,0,0,.75)",borderRadius:10,padding:"8px 12px",maxWidth:180,zIndex:50}}>
-          {gs.log.map((l,i)=><div key={i} style={{fontSize:11,color:i===0?"#facc15":"rgba(255,255,255,.5)",padding:"2px 0"}}>{l}</div>)}
-        </div>
-      )}
+
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl}/>}
     </div>
   );
@@ -676,22 +697,26 @@ function AIGameScreen({players,scoreLimit,onQuit}){
   const [drawFrom,setDrawFrom]=useState(null);
   const [dropIdxs,setDropIdxs]=useState([]);
   const [msg,setMsg]=useState("");
-  const [log,setLog]=useState([]);
   const [showRules,setShowRules]=useState(false);
   const [roundResult,setRoundResult]=useState(null);
   const [newlyElim,setNewlyElim]=useState([]);
   const [gameWinner,setGameWinner]=useState(null);
+  const [wildCard,setWildCard]=useState(null);
   const aiTimer=useRef(null);
 
-  function pushLog(t){setLog(p=>[t,...p].slice(0,6));}
 
   function deal(ap){
     const a=ap||active;
     const d=shuffleDeck(makeDeck());
     const h={};let cur=0;
     for(const name of a){h[name]=d.slice(cur,cur+5);cur+=5;}
-    setStock(d.slice(cur+1));setPile([d[cur]]);setHands(h);
-    setTurnIdx(0);setDrawFrom(null);setDropIdxs([]);setLog([]);setRoundResult(null);
+    const wc=d[0];
+    const dr=d.slice(1);
+    const h2={};let c2=0;
+    for(const name of a){h2[name]=dr.slice(c2,c2+5);c2+=5;}
+    setWildCard(wc);
+    setStock(dr.slice(c2+1));setPile([dr[c2]]);setHands(h2);
+    setTurnIdx(0);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
     setMsg("Pick source, select drop card, then SWAP");
   }
 
@@ -706,7 +731,7 @@ function AIGameScreen({players,scoreLimit,onQuit}){
     aiTimer.current=setTimeout(()=>{
       const hand=hands[currentPlayer];
       if(!hand)return;
-      if(handTotal(hand)<=13){pushLog(`${currentPlayer} claims!`);handleClaim(currentPlayer,hand);return;}
+      if(handTotal(hand,wildCard)<=13){handleClaim(currentPlayer,hand);return;}
       const topCard=pile[pile.length-1];
       const worst=Math.max(...hand.map(c=>c.pts));
       const useTop=topCard&&topCard.pts<worst;
@@ -715,8 +740,8 @@ function AIGameScreen({players,scoreLimit,onQuit}){
       let bg=null,bp=-1;
       for(const g of Object.values(groups)){const gp=g.reduce((s,c)=>s+c.pts,0);if(gp>bp){bp=gp;bg=g;}}
       let drew,ns=[...stock],np=[...pile];
-      if(useTop&&topCard){drew=topCard;np=pile.slice(0,-1);pushLog(`${currentPlayer} takes ${drew.rank}${drew.suit}`);}
-      else{if(!stock.length)return;drew=stock[0];ns=stock.slice(1);pushLog(`${currentPlayer} draws`);}
+      if(useTop&&topCard){drew=topCard;np=pile.slice(0,-1);}
+      else{if(!stock.length)return;drew=stock[0];ns=stock.slice(1);}
       const di=new Set(bg.map(c=>c.id));
       const nh=[...hand.filter(c=>!di.has(c.id)),drew];
       np=[...np,...bg];
@@ -729,8 +754,8 @@ function AIGameScreen({players,scoreLimit,onQuit}){
     return()=>clearTimeout(aiTimer.current);
   },[turnIdx,roundResult]);// eslint-disable-line
 
-  function handleClaim(claimerName,claimerHand){
-    const results=active.map(name=>({name,hand:name===claimerName?claimerHand:(hands[name]||[]),pts:name===claimerName?handTotal(claimerHand):handTotal(hands[name]||[])}));
+  function handleClaim(claimerName,claimerHand,wc){
+    const results=active.map(name=>({name,hand:name===claimerName?claimerHand:(hands[name]||[]),pts:name===claimerName?handTotal(claimerHand,wc||wildCard):handTotal(hands[name]||[],wc||wildCard)}));
     const lowestPts=Math.min(...results.map(r=>r.pts));
     const claimerPts=results.find(r=>r.name===claimerName).pts;
     const claimerWon=claimerPts===lowestPts;
@@ -774,12 +799,11 @@ function AIGameScreen({players,scoreLimit,onQuit}){
     np=[...np,...dropping];
     setStock(ns);setPile(np);
     setHands(p=>({...p,[YOU]:[...kept,drew]}));
-    pushLog(`You: drop ${dropping.map(c=>c.rank+c.suit).join(",")} → ${drew.rank}${drew.suit}`);
     const next=(turnIdx+1)%active.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
     setMsg(isAI(active[next])?`${active[next]}'s turn...`:"Pick source, select drop card, then SWAP");
   }
-  function doShow(){if(!isMyTurn)return;pushLog("You claim!");handleClaim(YOU,hands[YOU]);}
+  function doShow(){if(!isMyTurn)return;handleClaim(YOU,hands[YOU],wildCard);}
 
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
@@ -874,7 +898,11 @@ function AIGameScreen({players,scoreLimit,onQuit}){
           );
         })}
       </div>
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:40}}>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:24,flexWrap:"wrap"}}>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#facc15",marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>🃏 Wild (0pt)</div>
+          {wildCard?<PlayingCard card={wildCard}/>:<div style={{width:68,height:100,borderRadius:8,border:"2px dashed rgba(255,255,255,.4)"}}/>}
+        </div>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:11,fontWeight:700,color:"#fff",marginBottom:14,textTransform:"uppercase",letterSpacing:1}}>Stock ({stock.length})</div>
           {stock.length>0?<PlayingCard card={stock[0]} faceDown glowing={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Draw here":null}/>:<div style={{width:68,height:100,borderRadius:8,border:"2px dashed rgba(255,255,255,.4)"}}/>}
@@ -900,7 +928,7 @@ function AIGameScreen({players,scoreLimit,onQuit}){
       </div>
       <div style={{background:"rgba(0,0,0,.25)",padding:"9px 12px 14px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
-          <span style={{color:"#fff",fontWeight:900,fontSize:13}}>You · {handTotal(myHand)} pts</span>
+          <span style={{color:"#fff",fontWeight:900,fontSize:13}}>You · {handTotal(myHand,wildCard)} pts</span>
           {isMyTurn&&(
             <div style={{display:"flex",gap:7}}>
               <button onClick={doSwap} disabled={!readySwap} style={{background:readySwap?"#059669":"#6b7280",color:"#fff",border:"none",borderRadius:10,padding:"8px 13px",fontSize:13,fontWeight:900,cursor:readySwap?"pointer":"not-allowed"}}>⇄ SWAP</button>
@@ -914,11 +942,7 @@ function AIGameScreen({players,scoreLimit,onQuit}){
           ))}
         </div>
       </div>
-      {log.length>0&&(
-        <div style={{position:"fixed",top:56,right:10,background:"rgba(0,0,0,.75)",borderRadius:10,padding:"8px 12px",maxWidth:180,zIndex:50}}>
-          {log.map((l,i)=><div key={i} style={{fontSize:11,color:i===0?"#facc15":"rgba(255,255,255,.5)",padding:"2px 0"}}>{l}</div>)}
-        </div>
-      )}
+
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit}/>}
     </div>
   );
