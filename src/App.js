@@ -417,24 +417,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const myHand=hands?.[myName]||[];
   const pileTop=pile?.[pile.length-1]||null;
   const readySwap=isMyTurn&&drawFrom!==null&&dropIdxs.length>0;
-  const allPlayers=gs.allPlayers||activePlayers;
 
   async function pushGs(updates){
     await update(ref(db,`rooms/${roomCode}/gameState`),updates);
-  }
-
-  function advanceTurn(newStock,newPile,newHands,newScores,newEliminated,newActive){
-    const next=(turnIdx+1)%newActive.length;
-    pushGs({
-      stock:newStock||stock,
-      pile:newPile||pile,
-      hands:newHands||hands,
-      scores:newScores||scores,
-      eliminated:newEliminated||eliminated,
-      activePlayers:newActive||activePlayers,
-      turnIdx:next,
-      lastAction:Date.now(),
-    });
   }
 
   function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
