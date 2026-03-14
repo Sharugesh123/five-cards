@@ -1,46 +1,36 @@
 import { useState, useEffect, useRef } from "react";
 
-// ── Simple realtime backend using Firebase REST API (no SDK needed) ────────────
-const FB_URL = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
+// ── Firebase REST API (rules now set to public) ────────────────────────────────
+const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
 
-async function fbSet(path, data){
-  const res = await fetch(`${FB_URL}/${path}.json`, {
-    method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)
-  });
-  if(!res.ok) throw new Error(`Firebase write failed: ${res.status} ${res.statusText}`);
+async function dbSet(key, data){
+  const res = await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+  if(!res.ok) throw new Error(`Write failed: ${res.status}`);
   return res.json();
 }
-async function fbUpdate(path, data){
-  const res = await fetch(`${FB_URL}/${path}.json`, {
-    method:"PATCH", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)
-  });
-  if(!res.ok) throw new Error(`Firebase update failed: ${res.status} ${res.statusText}`);
+async function dbGet(key){
+  const res = await fetch(`${FB}/${key}.json`);
+  if(!res.ok) throw new Error(`Read failed: ${res.status}`);
+  const d = await res.json();
+  return d;
+}
+async function dbMerge(key, updates){
+  const res = await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(updates)});
+  if(!res.ok) throw new Error(`Merge failed: ${res.status}`);
   return res.json();
 }
-async function fbGet(path){
-  const res = await fetch(`${FB_URL}/${path}.json`);
-  if(!res.ok) throw new Error(`Firebase read failed: ${res.status} ${res.statusText}`);
-  return res.json();
-}
-function fbListen(path, callback){
-  let stopped = false;
-  let lastJson = null;
+function dbListen(key, callback){
+  let stopped=false, lastJson=null;
   async function poll(){
-    if(stopped) return;
+    if(stopped)return;
     try{
-      const res = await fetch(`${FB_URL}/${path}.json`);
-      if(res.ok){
-        const text = await res.text();
-        if(text !== lastJson){
-          lastJson = text;
-          try{ callback(JSON.parse(text)); }catch(_){}
-        }
-      }
+      const res=await fetch(`${FB}/${key}.json`);
+      if(res.ok){const t=await res.text();if(t!==lastJson){lastJson=t;try{callback(JSON.parse(t));}catch(_){}}}
     }catch(_){}
-    if(!stopped) setTimeout(poll, 1500);
+    if(!stopped)setTimeout(poll,1500);
   }
   poll();
-  return ()=>{ stopped=true; };
+  return ()=>{stopped=true;};
 }
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
@@ -484,7 +474,7 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
     try{
       const c=genCode();
       const roomData={code:c,host:myName.trim(),players:[myName.trim()],maxPlayers:maxP,scoreLimit,penalty,started:false,createdAt:Date.now()};
-      await fbSet(`rooms/${c}`,roomData);
+      await dbSet(`rooms/${c}`,roomData);
       setMyCode(c);
       listenToRoom(c);
     }catch(e){
@@ -499,12 +489,12 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
     const c=joinCode.trim().toUpperCase();
     setError("");setLoading(true);
     try{
-      const r=await fbGet(`rooms/${c}`);
+      const r=await dbGet(`rooms/${c}`);
       if(!r){setError("Room not found! Check the code.");setLoading(false);return;}
       if(r.started){setError("Game already started!");setLoading(false);return;}
       if(r.players.length>=r.maxPlayers){setError("Room is full!");setLoading(false);return;}
       if(r.players.includes(myName.trim())){setError("Name already taken!");setLoading(false);return;}
-      await fbUpdate(`rooms/${c}`,{players:[...r.players,myName.trim()]});
+      await dbMerge(`rooms/${c}`,{players:[...r.players,myName.trim()]});
       setMyCode(c);
       listenToRoom(c);
     }catch(e){
@@ -515,10 +505,10 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
 
   function listenToRoom(c){
     if(unsubRef.current)unsubRef.current();
-    unsubRef.current=fbListen(`rooms/${c}`,(data)=>{
+    unsubRef.current=dbListen(`rooms/${c}`,(data)=>{
       if(!data)return;
       setRoom(data);
-      if(data.started)onStart(data.players,data.scoreLimit,c,myName);
+      if(data.started)onStart(data.players,data.scoreLimit,c,myName.trim());
     });
   }
 
@@ -533,7 +523,8 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
       scores:Object.fromEntries(ap.map(p=>[p,0])),
       eliminated:[],activePlayers:ap,penalty:room.penalty||50,
       turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
-    await fbUpdate(`rooms/${room.code}`,{started:true,gameState:gs});
+    await dbSet(`rooms/${room.code}/gameState`,gs);
+    await dbMerge(`rooms/${room.code}`,{started:true});
   }
 
   useEffect(()=>()=>{if(unsubRef.current)unsubRef.current();},[]);
@@ -680,52 +671,7 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
   );
 }
 
-  async function createRoom(){
-    if(!myName.trim()){setError("Enter your name first!");return;}
-    setError("");setLoading(true);
-    try{
-      const c=genCode();
-      await fbSet(`rooms/${c}`,{code:c,host:myName.trim(),players:[myName.trim()],maxPlayers:maxP,scoreLimit,penalty,started:false,createdAt:Date.now()});
-      setMyCode(c);listenToRoom(c);
-    }catch(e){setError("Error: "+( e?.message||"Check Firebase rules & connection"));}
-    setLoading(false);
-  }
-  async function joinRoom(){
-    if(!myName.trim()){setError("Enter your name first!");return;}
-    if(!joinCode.trim()){setError("Enter the room code!");return;}
-    const c=joinCode.trim().toUpperCase();
-    setError("");setLoading(true);
-    try{
-      const snap=await fbGet(`rooms/${c}`);
-      if(!snap){setError("Room not found! Check the code.");setLoading(false);return;}
-      const r=snap;
-      if(r.started){setError("Game already started!");setLoading(false);return;}
-      if(r.players.length>=r.maxPlayers){setError("Room is full!");setLoading(false);return;}
-      if(r.players.includes(myName.trim())){setError("Name already taken in this room!");setLoading(false);return;}
-      await fbUpdate(`rooms/${c}`,{players:[...r.players,myName.trim()]});
-      setMyCode(c);listenToRoom(c);
-    }catch(e){setError("Error: "+(e?.message||"Check Firebase rules & connection"));}
-    setLoading(false);
-  }
-  function listenToRoom(c){
-    if(unsubRef.current)unsubRef.current();
-    const unsub=fbListen(`rooms/${c}`,(data)=>{
-      if(!data)return;
-      setRoom(data);
-      if(data.started)onStart(data.players,data.scoreLimit,c,myName);
-    });
-    unsubRef.current=unsub;
-  }
-  async function startGame(){
-    if(!room||room.players.length<2){setError("Need at least 2 players!");return;}
-    const ap=room.players;
-    const d=shuffleDeck(makeDeck());
-    const wc=d[0],dr=d.slice(1);
-    const hands={};let cur=0;
-    for(const name of ap){hands[name]=dr.slice(cur,cur+5);cur+=5;}
-    const gs={stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands,scores:Object.fromEntries(ap.map(p=>[p,0])),eliminated:[],activePlayers:ap,penalty:room.penalty||50,turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
-    await fbUpdate(`rooms/${room.code}`,{started:true,gameState:gs});
-  }
+
 // ── Round Result Screen ────────────────────────────────────────────────────────
 function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoints,onNext,canNext}){
   return(
@@ -808,11 +754,11 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const cp=gs.activePlayers[gs.turnIdx];
     if(cp!==myName)return;
     const next=(gs.turnIdx+1)%gs.activePlayers.length;
-    fbUpdate(`rooms/${roomCode}/gameState`,{turnIdx:next,lastAction:Date.now()});
+    dbMerge(`rooms/${roomCode}/gameState`,{turnIdx:next,lastAction:Date.now()});
   },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
-    const unsub=fbListen(`rooms/${roomCode}/gameState`,(g)=>{
+    const unsub=dbListen(`rooms/${roomCode}/gameState`,(g)=>{
       if(!g)return;
       setGs(g);
       const cp=g.activePlayers[g.turnIdx];
@@ -846,7 +792,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const readySwap=isMyTurn&&drawFrom!==null&&dropIdxs.length>0;
   const allPlayers=[...activePlayers,...(eliminated||[])];
 
-  async function pushGs(u){await fbUpdate(`rooms/${roomCode}/gameState`,u);}
+  async function pushGs(u){await dbMerge(`rooms/${roomCode}/gameState`,u);}
   function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
   function selPile(){if(!isMyTurn||!pile?.length)return;setDrawFrom(p=>p==="pile"?null:"pile");}
   function toggleDrop(idx){
