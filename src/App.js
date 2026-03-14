@@ -711,120 +711,126 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   if(showGate&&isMyTurn)return <TurnGate playerName={myName} onReady={()=>{setShowGate(false);startTimer();}}/>;
 
   const sl=scoreLimit||300;
+  const opponents=activePlayers.filter(n=>n!==myName);
 
   return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column"}}>
+    <div style={{minHeight:"100vh",maxWidth:480,margin:"0 auto",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",position:"relative"}}>
       <style>{GS.base}</style>
-      {/* Header */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
+
+      {/* ── Header ── */}
+      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontWeight:900,fontSize:16,letterSpacing:-.3}}>5 CARDS</span>
-          <span style={{fontSize:11,color:T.muted,background:"rgba(0,0,0,.06)",borderRadius:20,padding:"2px 8px"}}>Round {round} · 🌐</span>
+          <span style={{fontWeight:900,fontSize:15,letterSpacing:-.3}}>5 CARDS</span>
+          <span style={{fontSize:10,color:T.muted,background:"rgba(0,0,0,.06)",borderRadius:20,padding:"2px 7px"}}>R{round} · 🌐</span>
         </div>
-        <div style={{display:"flex",gap:7}}>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
         </div>
       </div>
 
-      {/* Score bar */}
-      <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
+      {/* ── Score bar ── */}
+      <div style={{padding:"6px 10px",display:"flex",gap:5,overflowX:"auto"}}>
         {activePlayers.map(name=>(
           <ScoreChip key={name} name={name} score={scores?.[name]||0} limit={sl} isActive={currentPlayer===name} isElim={(eliminated||[]).includes(name)} isYou={name===myName}/>
         ))}
       </div>
 
-      {/* Main table */}
-      <div style={{flex:1,display:"flex",flexDirection:"row",gap:12,padding:"8px 12px",minHeight:0}}>
-        {/* Left — opponents */}
-        <div style={{display:"flex",flexDirection:"column",gap:8,width:120,flexShrink:0}}>
-          {activePlayers.filter(n=>n!==myName).map(name=>{
-            const h=hands?.[name]||[];
-            const isCur=currentPlayer===name;
-            return(
-              <Panel key={name} style={{padding:"10px",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                  <span style={{fontSize:13}}>👤</span>
-                  <span style={{fontWeight:700,fontSize:11,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                  {isCur&&<span style={{fontSize:10,color:T.accent,fontWeight:700}}>▶</span>}
-                </div>
-                <div style={{display:"flex",gap:3,flexWrap:"wrap",justifyContent:"center"}}>
-                  {h.map((_,ci)=><Card key={ci} card={{rank:"?",suit:"?"}} faceDown small/>)}
-                </div>
-              </Panel>
-            );
-          })}
+      {/* ── Opponents row (face-down only) ── */}
+      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"6px 10px",flexWrap:"wrap"}}>
+        {opponents.map(name=>{
+          const h=hands?.[name]||[];
+          const isCur=currentPlayer===name;
+          return(
+            <div key={name} style={{
+              background:isCur?"rgba(37,99,235,.08)":T.surface,
+              backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)",
+              borderRadius:12,padding:"8px 10px",textAlign:"center",minWidth:80,
+              boxShadow:T.shadow,
+            }}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:6}}>
+                <span style={{fontSize:12}}>👤</span>
+                <span style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,maxWidth:60,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
+              </div>
+              <div style={{display:"flex",gap:2,justifyContent:"center"}}>
+                {h.map((_,ci)=><Card key={ci} card={{rank:"?",suit:"?"}} faceDown small/>)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Table: Wild + Stock + Discard ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"4px 12px"}}>
+        {/* Wild card */}
+        {wildCard&&(
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:700,color:T.gold,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>🌟 Wild Card · 0 pts</div>
+            <Card card={wildCard}/>
+          </div>
+        )}
+
+        {/* Stock + Discard side by side */}
+        <div style={{display:"flex",gap:24,alignItems:"flex-end",justifyContent:"center"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock?.length||0})</div>
+            {stock?.length>0
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Draw":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
+            }
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
+            {pileTop
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Draw":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
+            }
+          </div>
         </div>
 
-        {/* Centre — table */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
-          {/* Wild card */}
-          {wildCard&&(
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:700,color:T.gold,letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>🌟 Wild · 0 pts</div>
-              <Card card={wildCard}/>
-            </div>
-          )}
-          {/* Stock + Discard */}
-          <div style={{display:"flex",gap:20,alignItems:"flex-end"}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock?.length||0})</div>
-              {stock?.length>0
-                ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"Source ✓":null}/>
-                :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
-              }
-            </div>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-              {pileTop
-                ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"Source ✓":null}/>
-                :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
-              }
-            </div>
+        {/* Step indicator */}
+        {isMyTurn&&(
+          <div style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"6px 14px"}}>
+            {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([label,done],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:10,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:10}}>›</span>}
+              </div>
+            ))}
           </div>
+        )}
 
-          {/* Step indicator */}
-          {isMyTurn&&(
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:20,height:20,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                  <span style={{fontSize:11,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
-                  {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:12}}>›</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Message */}
-          <div style={{fontSize:12,color:T.muted,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>
-            {isMyTurn?msg:`${currentPlayer}'s turn...`}
-          </div>
+        {/* Status message */}
+        <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>
+          {isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}
         </div>
       </div>
 
-      {/* Bottom — my hand */}
-      <Panel style={{margin:"0 8px 10px",padding:"12px 14px",borderRadius:14}}>
+      {/* ── My hand (pinned bottom) ── */}
+      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontWeight:700,fontSize:13}}>You</span>
-            <span style={{fontSize:11,fontFamily:T.mono,color:T.muted}}>{handTotal(myHand,wildCard)} pts</span>
-            {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontWeight:800,fontSize:13}}>You</span>
+            <span style={{fontSize:11,fontFamily:T.mono,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.ink}}>{handTotal(myHand,wildCard)} pts</span>
           </div>
-          {isMyTurn&&(
-            <div style={{display:"flex",gap:8}}>
+          {isMyTurn?(
+            <div style={{display:"flex",gap:7}}>
               <Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn>
               <Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn>
             </div>
+          ):(
+            <span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>
           )}
-          {!isMyTurn&&<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Wait for your turn...</span>}
         </div>
-        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",paddingTop:16}}>
+        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:14,paddingBottom:2}}>
           {myHand.map((card,idx)=>(
-            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop ✓":null}/>
+            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
           ))}
         </div>
-      </Panel>
+      </div>
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
     </div>
   );
