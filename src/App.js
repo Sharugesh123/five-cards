@@ -521,7 +521,7 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
     for(const name of ap){hands[name]=dr.slice(cur,cur+5);cur+=5;}
     const gs={stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands,
       scores:Object.fromEntries(ap.map(p=>[p,0])),
-      eliminated:[],activePlayers:ap,penalty:room.penalty||50,
+      eliminated:[],activePlayers:ap,allPlayers:ap,penalty:room.penalty||50,
       turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
     await dbSet(`rooms/${room.code}/gameState`,gs);
     await dbMerge(`rooms/${room.code}`,{started:true});
@@ -744,6 +744,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [timeLeft,setTimeLeft]=useState(30);
   const unsubRef=useRef(null);
   const prevTurnRef=useRef(null);
+  const prevRoundRef=useRef(null);
   const timerRef=useRef(null);
 
   function startTimer(){clearInterval(timerRef.current);setTimeLeft(30);timerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;});},1000);}
@@ -762,8 +763,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       if(!g)return;
       setGs(g);
       const cp=g.activePlayers[g.turnIdx];
-      if(cp===myName&&prevTurnRef.current!==g.turnIdx){
-        prevTurnRef.current=g.turnIdx;
+      const turnKey=`${g.round||1}_${g.turnIdx}`;
+      if(cp===myName&&prevTurnRef.current!==turnKey){
+        prevTurnRef.current=turnKey;
         setDrawFrom(null);setDropIdxs([]);setShowGate(true);
         setMsg("Pick source · select drop · SWAP");
         startTimer();
@@ -837,11 +839,19 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   }
   async function nextRound(){
     const ap=gs.activePlayers;
+    const newRound=(round||1)+1;
+    // Rotate starting player: each round starts with next player
+    const allP=gs.allPlayers||ap;
+    const startOffset=newRound % ap.length;
+    const startPlayer=ap[startOffset % ap.length];
+    const startIdx=ap.indexOf(startPlayer);
     const d=shuffleDeck(makeDeck());
     const wc=d[0],dr=d.slice(1);
     const h={};let cur=0;
     for(const name of ap){h[name]=dr.slice(cur,cur+5);cur+=5;}
-    await pushGs({stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,turnIdx:0,round:(round||1)+1,roundResult:null,lastAction:Date.now()});
+    await pushGs({stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,
+      turnIdx:startIdx>=0?startIdx:0,round:newRound,
+      roundResult:null,lastAction:Date.now(),allPlayers:allP});
   }
 
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
@@ -1004,16 +1014,19 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);turnTimerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;});},1000);}
   useEffect(()=>()=>clearInterval(turnTimerRef.current),[]);
 
-  function deal(ap){
+  function deal(ap, roundNum){
     const a=ap||active;
     const d=shuffleDeck(makeDeck());
     const wc=d[0],dr=d.slice(1);
     const h={};let cur=0;
     for(const name of a){h[name]=dr.slice(cur,cur+5);cur+=5;}
+    // Rotate starting player each round
+    const rn=roundNum||1;
+    const startIdx=rn % a.length;
     setWildCard(wc);setStock(dr.slice(cur+1));setPile([dr[cur]]);setHands(h);
-    setTurnIdx(0);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
-    setMsg("Pick source · select drop · SWAP");
-    startTurnTimer();
+    setTurnIdx(startIdx);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
+    setMsg(a[startIdx]==="You"?"Pick source · select drop · SWAP":`${a[startIdx]}'s turn...`);
+    if(a[startIdx]==="You") startTurnTimer();
   }
   useEffect(()=>{deal();},[]);// eslint-disable-line
 
@@ -1077,7 +1090,11 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
 
   function nextRound(){
     if(roundResult?.justElim?.length>0){setNewlyElim(roundResult.justElim);setRoundResult(null);}
-    else{setRoundResult(null);setRound(r=>r+1);deal();}
+    else{
+      const newRound=round+1;
+      setRoundResult(null);setRound(newRound);
+      deal(null, newRound);
+    }
   }
 
   function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
@@ -1115,7 +1132,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
 
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={()=>{setGameWinner(null);onQuit();}} onQuit={onQuit}/>;
   if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true}/>;
-  if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>{setNewlyElim([]);setRound(r=>r+1);deal();}}/>;
+  if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>{const nr=round+1;setNewlyElim([]);setRound(nr);deal(active.filter(n=>!eliminated.includes(n)),nr);}}/>;
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column"}}>
