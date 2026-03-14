@@ -134,6 +134,56 @@ function Card({card,faceDown,selected,glowGreen,small,onClick,badge}){
   );
 }
 
+// ── Fanned face-down cards (opponent view) ────────────────────────────────────
+function FanCards({count=5}){
+  const W=42, H=60;
+  const totalWidth = W + (count-1)*18 + 20;
+  // angles spread from -20 to +20 degrees
+  const angles = Array.from({length:count},(_,i)=> count===1 ? 0 : -20 + (40/(count-1))*i);
+  return(
+    <div style={{position:"relative",height:H+28,width:totalWidth,margin:"0 auto"}}>
+      {angles.map((angle,i)=>(
+        <div key={i} style={{
+          position:"absolute",
+          left: i*18,
+          bottom:0,
+          width:W, height:H,
+          borderRadius:7,
+          background:"#fff",
+          border:"1.5px solid rgba(255,255,255,0.15)",
+          boxShadow:"0 4px 12px rgba(0,0,0,0.25), 0 1px 3px rgba(0,0,0,0.15)",
+          transform:`rotate(${angle}deg)`,
+          transformOrigin:"50% 100%",
+          overflow:"hidden",
+          zIndex:i,
+        }}>
+          {/* White background */}
+          <div style={{position:"absolute",inset:0,background:"#fff"}}/>
+          {/* Red/black suit pattern grid */}
+          <div style={{
+            position:"absolute",inset:2,
+            display:"grid",
+            gridTemplateColumns:"repeat(4,1fr)",
+            gridTemplateRows:"repeat(5,1fr)",
+            gap:1,overflow:"hidden",borderRadius:5,
+          }}>
+            {["♠","♥","♦","♣","♣","♦","♥","♠","♠","♥","♦","♣","♣","♦","♥","♠","♠","♥","♦","♣"].map((s,idx)=>(
+              <div key={idx} style={{
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:8,
+                color:s==="♥"||s==="♦"?"#E11D48":"#111827",
+                opacity:0.85,
+              }}>{s}</div>
+            ))}
+          </div>
+          {/* Subtle shine overlay */}
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(255,255,255,0.18) 0%,transparent 60%)",borderRadius:7,pointerEvents:"none"}}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Timer ring ─────────────────────────────────────────────────────────────────
 function TimerRing({timeLeft,total=30}){
   const r=20, circ=2*Math.PI*r;
@@ -755,7 +805,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
                 {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
               </div>
               <div style={{display:"flex",gap:2,justifyContent:"center"}}>
-                {h.map((_,ci)=><Card key={ci} card={{rank:"?",suit:"?"}} faceDown small/>)}
+                <FanCards count={h.length||5}/>
               </div>
             </div>
           );
@@ -1015,7 +1065,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
                   {isCur&&<span style={{fontSize:10,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
                 </div>
                 <div style={{display:"flex",gap:3,flexWrap:"wrap",justifyContent:"center"}}>
-                  {h.map((_,ci)=><Card key={ci} card={{rank:"?",suit:"?"}} faceDown small/>)}
+                  <FanCards count={h.length||5}/>
                 </div>
               </Panel>
             );
