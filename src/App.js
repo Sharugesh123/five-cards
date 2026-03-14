@@ -468,7 +468,6 @@ function HomeScreen({onPlayAI,onPlayFriends}){
 
 // ── Friends Lobby ──────────────────────────────────────────────────────────────
 function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
-  const [mode,setMode]=useState(null); // null | "create" | "join"
   const [myName,setMyName]=useState("");
   const [joinCode,setJoinCode]=useState("");
   const [room,setRoom]=useState(null);
@@ -476,7 +475,210 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
   const [error,setError]=useState("");
   const [maxP,setMaxP]=useState(4);
   const [loading,setLoading]=useState(false);
+  const [tab,setTab]=useState("create"); // "create" | "join"
   const unsubRef=useRef(null);
+
+  async function createRoom(){
+    if(!myName.trim()){setError("Enter your name first!");return;}
+    setError("");setLoading(true);
+    try{
+      const c=genCode();
+      const roomData={code:c,host:myName.trim(),players:[myName.trim()],maxPlayers:maxP,scoreLimit,penalty,started:false,createdAt:Date.now()};
+      await fbSet(`rooms/${c}`,roomData);
+      setMyCode(c);
+      listenToRoom(c);
+    }catch(e){
+      setError("Failed: "+(e?.message||"unknown error"));
+    }
+    setLoading(false);
+  }
+
+  async function joinRoom(){
+    if(!myName.trim()){setError("Enter your name first!");return;}
+    if(joinCode.trim().length!==5){setError("Room code must be 5 characters!");return;}
+    const c=joinCode.trim().toUpperCase();
+    setError("");setLoading(true);
+    try{
+      const r=await fbGet(`rooms/${c}`);
+      if(!r){setError("Room not found! Check the code.");setLoading(false);return;}
+      if(r.started){setError("Game already started!");setLoading(false);return;}
+      if(r.players.length>=r.maxPlayers){setError("Room is full!");setLoading(false);return;}
+      if(r.players.includes(myName.trim())){setError("Name already taken!");setLoading(false);return;}
+      await fbUpdate(`rooms/${c}`,{players:[...r.players,myName.trim()]});
+      setMyCode(c);
+      listenToRoom(c);
+    }catch(e){
+      setError("Failed: "+(e?.message||"unknown error"));
+    }
+    setLoading(false);
+  }
+
+  function listenToRoom(c){
+    if(unsubRef.current)unsubRef.current();
+    unsubRef.current=fbListen(`rooms/${c}`,(data)=>{
+      if(!data)return;
+      setRoom(data);
+      if(data.started)onStart(data.players,data.scoreLimit,c,myName);
+    });
+  }
+
+  async function startGame(){
+    if(!room||room.players.length<2){setError("Need at least 2 players!");return;}
+    const ap=room.players;
+    const d=shuffleDeck(makeDeck());
+    const wc=d[0],dr=d.slice(1);
+    const hands={};let cur=0;
+    for(const name of ap){hands[name]=dr.slice(cur,cur+5);cur+=5;}
+    const gs={stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands,
+      scores:Object.fromEntries(ap.map(p=>[p,0])),
+      eliminated:[],activePlayers:ap,penalty:room.penalty||50,
+      turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
+    await fbUpdate(`rooms/${room.code}`,{started:true,gameState:gs});
+  }
+
+  useEffect(()=>()=>{if(unsubRef.current)unsubRef.current();},[]);
+  const isHost=room&&room.host===myName.trim();
+
+  const inp={width:"100%",padding:"13px 14px",borderRadius:10,border:`1.5px solid rgba(0,0,0,.12)`,
+    fontSize:15,fontWeight:500,color:T.ink,outline:"none",background:"#fff",
+    fontFamily:T.font,boxSizing:"border-box"};
+
+  // ── In Room lobby ──
+  if(room) return(
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
+      <style>{GS.base}</style>
+      <div style={{width:"100%",maxWidth:420}}>
+        <div style={{fontWeight:900,fontSize:24,letterSpacing:-.5,marginBottom:20,textAlign:"center"}}>Room Lobby</div>
+
+        <Panel style={{padding:"20px",textAlign:"center",marginBottom:14}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Room Code</div>
+          <div style={{fontSize:48,fontWeight:900,letterSpacing:12,fontFamily:T.mono,color:T.accent,marginBottom:4}}>{myCode}</div>
+          <div style={{fontSize:12,color:T.muted}}>Share with friends 📲</div>
+        </Panel>
+
+        <Panel style={{padding:"18px 20px",marginBottom:14}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>
+            Players ({room.players.length}/{room.maxPlayers})
+          </div>
+          {room.players.map((p,i)=>(
+            <div key={p} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,
+              background:p===myName.trim()?"rgba(37,99,235,.06)":"rgba(0,0,0,.03)",
+              border:p===myName.trim()?`1.5px solid ${T.accent}`:"1.5px solid transparent"}}>
+              <span style={{fontSize:18}}>{i===0?"👑":"👤"}</span>
+              <span style={{fontWeight:600,fontSize:14,flex:1}}>{p}</span>
+              {p===myName.trim()&&<span style={{fontSize:10,color:T.accent,fontWeight:700,background:"rgba(37,99,235,.1)",borderRadius:4,padding:"2px 6px"}}>You</span>}
+              {i===0&&p!==myName.trim()&&<span style={{fontSize:10,color:T.gold,fontWeight:700}}>Host</span>}
+            </div>
+          ))}
+          {Array(room.maxPlayers-room.players.length).fill(0).map((_,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,
+              border:"1.5px dashed rgba(0,0,0,.08)",background:"rgba(0,0,0,.02)"}}>
+              <span style={{fontSize:18,opacity:.3}}>⏳</span>
+              <span style={{fontSize:13,color:T.muted}}>Waiting for player...</span>
+            </div>
+          ))}
+        </Panel>
+
+        {isHost?(
+          <Btn onClick={startGame} disabled={room.players.length<2}
+            style={{width:"100%",fontSize:15,padding:"15px",opacity:room.players.length<2?.5:1}}>
+            {room.players.length>=2?"🚀 Start Game!":"Need at least 2 players..."}
+          </Btn>
+        ):(
+          <Panel style={{padding:"14px 20px",textAlign:"center"}}>
+            <div style={{color:T.muted,fontSize:13}}>⏳ Waiting for <strong>{room.host}</strong> to start...</div>
+          </Panel>
+        )}
+        {error&&<div style={{marginTop:10,padding:"10px 14px",borderRadius:10,background:"rgba(239,68,68,.08)",border:`1px solid rgba(239,68,68,.2)`,color:T.red,fontSize:13,fontWeight:600}}>⚠️ {error}</div>}
+      </div>
+    </div>
+  );
+
+  // ── Pre-room screen ──
+  return(
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
+      <style>{GS.base}</style>
+      <div style={{width:"100%",maxWidth:420}}>
+        <button onClick={onBack} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font,marginBottom:24,padding:0}}>← Back</button>
+        <div style={{fontWeight:900,fontSize:26,letterSpacing:-.5,marginBottom:2}}>Play with Friends</div>
+        <div style={{color:T.muted,fontSize:13,marginBottom:20}}>Real online · any device 🌐</div>
+
+        {/* Name input */}
+        <Panel style={{padding:"16px 18px",marginBottom:14}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Your Name</div>
+          <input value={myName} onChange={e=>{setMyName(e.target.value);setError("");}}
+            placeholder="Enter your name..." style={inp} autoFocus/>
+        </Panel>
+
+        {/* Tab switcher */}
+        <div style={{display:"flex",background:"rgba(0,0,0,.06)",borderRadius:12,padding:4,marginBottom:14,gap:4}}>
+          {["create","join"].map(t=>(
+            <button key={t} onClick={()=>{setTab(t);setError("");}}
+              style={{flex:1,padding:"10px",borderRadius:9,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,
+                background:tab===t?"#fff":  "transparent",
+                color:tab===t?T.ink:T.muted,
+                boxShadow:tab===t?T.shadow:"none",
+                transition:"all .2s",fontFamily:T.font}}>
+              {t==="create"?"➕ Create Room":"🔑 Join Room"}
+            </button>
+          ))}
+        </div>
+
+        {/* Create panel */}
+        {tab==="create"&&(
+          <Panel style={{padding:"18px 20px"}}>
+            <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Max Players</div>
+            <div style={{display:"flex",gap:8,marginBottom:18}}>
+              {[2,3,4].map(n=>(
+                <button key={n} onClick={()=>setMaxP(n)}
+                  style={{flex:1,padding:"12px",borderRadius:10,border:"none",cursor:"pointer",fontSize:18,fontWeight:700,
+                    background:maxP===n?T.accent:"rgba(0,0,0,.06)",color:maxP===n?"#fff":T.ink,transition:"all .15s"}}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={createRoom}
+              disabled={loading}
+              style={{width:"100%",padding:"15px",borderRadius:10,border:"none",cursor:loading?"not-allowed":"pointer",
+                background:T.accent,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,
+                opacity:loading?.6:1,boxShadow:"0 4px 14px rgba(37,99,235,.4)"}}>
+              {loading?"⏳ Creating...":"🚀 Create Room"}
+            </button>
+          </Panel>
+        )}
+
+        {/* Join panel */}
+        {tab==="join"&&(
+          <Panel style={{padding:"18px 20px"}}>
+            <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Room Code</div>
+            <input value={joinCode}
+              onChange={e=>{setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));setError("");}}
+              onKeyDown={e=>{if(e.key==="Enter")joinRoom();}}
+              maxLength={5} placeholder="A1B2C"
+              style={{...inp,fontSize:28,fontWeight:900,letterSpacing:10,textAlign:"center",fontFamily:T.mono,marginBottom:14}}/>
+            <button
+              onClick={joinRoom}
+              disabled={loading}
+              style={{width:"100%",padding:"15px",borderRadius:10,border:"none",cursor:loading?"not-allowed":"pointer",
+                background:T.green,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,
+                opacity:loading?.6:1,boxShadow:"0 4px 14px rgba(16,185,129,.4)"}}>
+              {loading?"⏳ Joining...":"🔑 Join Room"}
+            </button>
+          </Panel>
+        )}
+
+        {error&&(
+          <div style={{marginTop:12,padding:"12px 14px",borderRadius:10,
+            background:"rgba(239,68,68,.08)",border:`1.5px solid rgba(239,68,68,.25)`,
+            color:T.red,fontSize:13,fontWeight:600,textAlign:"center"}}>
+            ⚠️ {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
   async function createRoom(){
     if(!myName.trim()){setError("Enter your name first!");return;}
@@ -524,138 +726,6 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
     const gs={stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands,scores:Object.fromEntries(ap.map(p=>[p,0])),eliminated:[],activePlayers:ap,penalty:room.penalty||50,turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
     await fbUpdate(`rooms/${room.code}`,{started:true,gameState:gs});
   }
-  useEffect(()=>()=>{if(unsubRef.current)unsubRef.current();},[]);
-  const isHost=room&&room.host===myName.trim();
-
-  const inputStyle={width:"100%",padding:"12px 14px",borderRadius:10,border:`1.5px solid rgba(0,0,0,.1)`,fontSize:15,fontWeight:500,color:T.ink,outline:"none",background:"rgba(0,0,0,.03)",fontFamily:T.font,boxSizing:"border-box"};
-
-  return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
-      <style>{GS.base}</style>
-      <div style={{width:"100%",maxWidth:420}}>
-
-        <button onClick={onBack} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font,marginBottom:24,display:"flex",alignItems:"center",gap:4,padding:0}}>← Back</button>
-        <div style={{fontWeight:900,fontSize:26,letterSpacing:-.5,marginBottom:2}}>Play with Friends</div>
-        <div style={{color:T.muted,fontSize:13,marginBottom:24}}>Real online · any device 🌐</div>
-
-        {/* ── Step 1: Name (always visible until in room) ── */}
-        {!room&&(
-          <>
-            <Panel style={{padding:"18px 20px",marginBottom:14}}>
-              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Your Name</div>
-              <input value={myName} onChange={e=>{setMyName(e.target.value);setError("");}}
-                placeholder="Enter your name..."
-                style={inputStyle}
-                onKeyDown={e=>{if(e.key==="Enter"&&mode==="join")joinRoom();}}
-              />
-            </Panel>
-
-            {/* ── Step 2: Choose action ── */}
-            {!mode&&(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Panel style={{padding:"20px",textAlign:"center",cursor:"pointer",transition:"transform .15s"}}
-                  onClick={()=>{if(!myName.trim()){setError("Enter your name first!");return;}setError("");setMode("create");}}>
-                  <div style={{fontSize:32,marginBottom:8}}>➕</div>
-                  <div style={{fontWeight:800,fontSize:15}}>Create Room</div>
-                  <div style={{fontSize:11,color:T.muted,marginTop:3}}>Start a new game</div>
-                </Panel>
-                <Panel style={{padding:"20px",textAlign:"center",cursor:"pointer",transition:"transform .15s"}}
-                  onClick={()=>{if(!myName.trim()){setError("Enter your name first!");return;}setError("");setMode("join");}}>
-                  <div style={{fontSize:32,marginBottom:8}}>🔑</div>
-                  <div style={{fontWeight:800,fontSize:15}}>Join Room</div>
-                  <div style={{fontSize:11,color:T.muted,marginTop:3}}>Enter a code</div>
-                </Panel>
-              </div>
-            )}
-
-            {/* ── Create Room config ── */}
-            {mode==="create"&&(
-              <Panel style={{padding:"20px"}}>
-                <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Max Players</div>
-                <div style={{display:"flex",gap:8,marginBottom:18}}>
-                  {[2,3,4].map(n=>(
-                    <button key={n} onClick={()=>setMaxP(n)}
-                      style={{flex:1,padding:"11px",borderRadius:8,border:"none",cursor:"pointer",fontSize:17,fontWeight:700,
-                        background:maxP===n?T.accent:"rgba(0,0,0,.06)",color:maxP===n?"#fff":T.ink,transition:"all .15s"}}>
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <Btn onClick={createRoom} disabled={loading} style={{width:"100%",marginBottom:10,fontSize:15,padding:"13px"}}>
-                  {loading?"Creating room...":"🚀 Create Room"}
-                </Btn>
-                <button onClick={()=>setMode(null)} style={{background:"none",border:"none",color:T.muted,fontSize:12,cursor:"pointer",width:"100%",fontFamily:T.font}}>← Back</button>
-              </Panel>
-            )}
-
-            {/* ── Join Room ── */}
-            {mode==="join"&&(
-              <Panel style={{padding:"20px"}}>
-                <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Room Code</div>
-                <input value={joinCode} onChange={e=>{setJoinCode(e.target.value.toUpperCase());setError("");}}
-                  onKeyDown={e=>{if(e.key==="Enter")joinRoom();}}
-                  maxLength={5} placeholder="e.g. A1B2C"
-                  style={{...inputStyle,fontSize:26,fontWeight:900,letterSpacing:8,textAlign:"center",fontFamily:T.mono,marginBottom:14}}/>
-                <Btn onClick={joinRoom} disabled={loading} style={{width:"100%",marginBottom:10,fontSize:15,padding:"13px"}}>
-                  {loading?"Joining...":"🔑 Join Room"}
-                </Btn>
-                <button onClick={()=>setMode(null)} style={{background:"none",border:"none",color:T.muted,fontSize:12,cursor:"pointer",width:"100%",fontFamily:T.font}}>← Back</button>
-              </Panel>
-            )}
-          </>
-        )}
-
-        {/* ── In Room: waiting lobby ── */}
-        {room&&(
-          <>
-            <Panel style={{padding:"20px",textAlign:"center",marginBottom:14}}>
-              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Room Code</div>
-              <div style={{fontSize:44,fontWeight:900,letterSpacing:10,fontFamily:T.mono,color:T.accent,marginBottom:4}}>{myCode}</div>
-              <div style={{fontSize:12,color:T.muted}}>Share this code with friends 📲</div>
-            </Panel>
-
-            <Panel style={{padding:"18px 20px",marginBottom:14}}>
-              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Players ({room.players.length}/{room.maxPlayers})</div>
-              {room.players.map((p,i)=>(
-                <div key={p} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,
-                  background:p===myName.trim()?"rgba(37,99,235,.06)":"rgba(0,0,0,.03)",
-                  border:p===myName.trim()?`1.5px solid ${T.accent}`:"1.5px solid transparent"}}>
-                  <span style={{fontSize:18}}>{i===0?"👑":"👤"}</span>
-                  <span style={{fontWeight:600,fontSize:14,flex:1}}>{p}</span>
-                  {p===myName.trim()&&<span style={{fontSize:10,color:T.accent,fontWeight:700,background:"rgba(37,99,235,.1)",borderRadius:4,padding:"2px 6px"}}>You</span>}
-                  {i===0&&p!==myName.trim()&&<span style={{fontSize:10,color:T.gold,fontWeight:700}}>Host</span>}
-                </div>
-              ))}
-              {Array(room.maxPlayers-room.players.length).fill(0).map((_,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:10,marginBottom:6,border:"1.5px dashed rgba(0,0,0,.08)",background:"rgba(0,0,0,.02)"}}>
-                  <span style={{fontSize:18,opacity:.3}}>⏳</span>
-                  <span style={{fontSize:13,color:T.muted}}>Waiting for player...</span>
-                </div>
-              ))}
-            </Panel>
-
-            {isHost?(
-              <Btn onClick={startGame} disabled={room.players.length<2} style={{width:"100%",fontSize:15,padding:"14px",opacity:room.players.length<2?.5:1}}>
-                {room.players.length>=2?"🚀 Start Game!":"Waiting for more players..."}
-              </Btn>
-            ):(
-              <Panel style={{padding:"14px 20px",textAlign:"center"}}>
-                <div style={{color:T.muted,fontSize:13,animation:"pulse 2s infinite"}}>⏳ Waiting for <strong>{room.host}</strong> to start...</div>
-              </Panel>
-            )}
-          </>
-        )}
-
-        {error&&(
-          <div style={{marginTop:12,padding:"11px 14px",borderRadius:10,background:"rgba(239,68,68,.08)",border:`1px solid rgba(239,68,68,.2)`,color:T.red,fontSize:13,fontWeight:600,textAlign:"center"}}>
-            ⚠️ {error}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Round Result Screen ────────────────────────────────────────────────────────
 function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoints,onNext,canNext}){
   return(
