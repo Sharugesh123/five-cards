@@ -744,7 +744,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [timeLeft,setTimeLeft]=useState(30);
   const unsubRef=useRef(null);
   const prevTurnRef=useRef(null);
-  const prevRoundRef=useRef(null);
   const timerRef=useRef(null);
 
   function startTimer(){clearInterval(timerRef.current);setTimeLeft(30);timerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;});},1000);}
