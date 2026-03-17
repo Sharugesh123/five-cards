@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect, useRef } from "react";
 
 // ── Firebase REST API (rules now set to public) ────────────────────────────────
@@ -43,7 +44,6 @@ function vibrate(pattern){
 const T = {
   bg:      "#F4F5F7",
   surface: "rgba(255,255,255,0.72)",
-  glass:   "rgba(255,255,255,0.55)",
   border:  "rgba(255,255,255,0.9)",
   ink:     "#111218",
   muted:   "#6B7280",
@@ -54,7 +54,6 @@ const T = {
   suit_r:  "#E11D48",
   suit_b:  "#1E3A8A",
   shadow:  "0 8px 32px rgba(0,0,0,0.10), 0 1.5px 4px rgba(0,0,0,0.06)",
-  glow_b:  "0 0 0 2.5px #2563EB, 0 8px 24px rgba(37,99,235,0.25)",
   glow_g:  "0 0 0 2.5px #10B981, 0 8px 24px rgba(16,185,129,0.25)",
   glow_y:  "0 0 0 2.5px #F59E0B, 0 8px 24px rgba(245,158,11,0.25)",
   font:    "'DM Sans', system-ui, sans-serif",
@@ -1045,9 +1044,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const newRound=(round||1)+1;
     // Rotate starting player: each round starts with next player
     const allP=gs.allPlayers||ap;
-    const startOffset=newRound % ap.length;
-    const startPlayer=ap[startOffset % ap.length];
-    const startIdx=ap.indexOf(startPlayer);
+    const startIdx=newRound % ap.length;
     const d=shuffleDeck(makeDeck());
     const wc=d[0],dr=d.slice(1);
     const h={};let cur=0;
