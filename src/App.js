@@ -33,6 +33,12 @@ function dbListen(key, callback){
   return ()=>{stopped=true;};
 }
 
+
+// ── Vibration helper ──────────────────────────────────────────────────────────
+function vibrate(pattern){
+  if(navigator?.vibrate) navigator.vibrate(pattern);
+}
+
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const T = {
   bg:      "#F4F5F7",
@@ -202,6 +208,8 @@ function FanCards({count=5}){
     </div>
   );
 }
+
+// ── Continue Popup (shown when timer hits 0) ──────────────────────────────────
 
 // ── Timer ring ─────────────────────────────────────────────────────────────────
 function TimerRing({timeLeft,total=30}){
@@ -672,62 +680,240 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
 }
 
 
-// ── Round Result Screen ────────────────────────────────────────────────────────
-function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoints,onNext,canNext}){
+// ── Points History Modal ──────────────────────────────────────────────────────
+function HistoryModal({onClose,history,allPlayers,scores,scoreLimit}){
   return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <Panel style={{maxWidth:460,width:"100%",maxHeight:"85vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 18px 12px",borderBottom:"1px solid rgba(0,0,0,.06)"}}>
+          <span style={{fontWeight:900,fontSize:16,letterSpacing:-.3}}>📜 Points History</span>
+          <Btn variant="ghost" small onClick={onClose}>✕</Btn>
+        </div>
+        <div style={{overflowY:"auto",padding:"14px 16px 18px"}}>
+          {history&&history.length>0?(
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:280}}>
+                <thead>
+                  <tr style={{borderBottom:"2px solid rgba(0,0,0,.08)"}}>
+                    <th style={{textAlign:"left",padding:"6px 8px",fontWeight:700,color:T.muted,fontSize:10,textTransform:"uppercase",letterSpacing:.5}}>Rnd</th>
+                    {allPlayers.map(name=>(
+                      <th key={name} style={{textAlign:"center",padding:"6px 8px",fontWeight:700,color:T.muted,fontSize:10,textTransform:"uppercase",letterSpacing:.5,whiteSpace:"nowrap"}}>{name}</th>
+                    ))}
+                    <th style={{textAlign:"center",padding:"6px 8px",fontWeight:700,color:T.muted,fontSize:10,textTransform:"uppercase",letterSpacing:.5}}>🏅</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h,i)=>(
+                    <tr key={i} style={{borderBottom:"1px solid rgba(0,0,0,.05)",background:i%2===0?"transparent":"rgba(0,0,0,.02)"}}>
+                      <td style={{padding:"8px",fontWeight:700,fontFamily:T.mono,color:T.muted,fontSize:11}}>R{h.round}</td>
+                      {allPlayers.map(name=>{
+                        const gained=h.gained?.[name]??0;
+                        return(
+                          <td key={name} style={{textAlign:"center",padding:"8px",fontFamily:T.mono,fontSize:12,
+                            fontWeight:gained>0?700:400,
+                            color:gained===0?T.green:gained>50?T.red:T.gold}}>
+                            {gained===0?"0 ✓":`+${gained}`}
+                          </td>
+                        );
+                      })}
+                      <td style={{textAlign:"center",padding:"8px",fontSize:11,fontWeight:700,color:T.accent,whiteSpace:"nowrap"}}>{h.winner}</td>
+                    </tr>
+                  ))}
+                  <tr style={{borderTop:"2px solid rgba(0,0,0,.1)",background:"rgba(37,99,235,.04)"}}>
+                    <td style={{padding:"8px",fontWeight:900,fontSize:12,color:T.ink}}>Total</td>
+                    {allPlayers.map(name=>{
+                      const sc=scores?.[name]??0;
+                      const pct=Math.min(100,(sc/scoreLimit)*100);
+                      return(
+                        <td key={name} style={{textAlign:"center",padding:"8px",fontFamily:T.mono,fontWeight:900,fontSize:13,
+                          color:pct>80?T.red:pct>55?T.gold:T.green}}>
+                          {sc}
+                        </td>
+                      );
+                    })}
+                    <td/>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ):(
+            <div style={{textAlign:"center",padding:"32px 20px"}}>
+              <div style={{fontSize:32,marginBottom:8}}>📊</div>
+              <div style={{color:T.muted,fontSize:13}}>No rounds played yet</div>
+            </div>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+// ── Round Result Screen ────────────────────────────────────────────────────────
+function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoints,onNext,canNext,history}){
+  const [tab,setTab]=useState("result"); // "result" | "history"
+  const AUTO_NEXT=5; // auto-advance after 5 seconds
+  const [countdown,setCountdown]=useState(AUTO_NEXT);
+  useEffect(()=>{
+    if(!canNext)return;
+    const t=setInterval(()=>{
+      setCountdown(p=>{
+        if(p<=1){clearInterval(t);onNext();return 0;}
+        return p-1;
+      });
+    },1000);
+    return()=>clearInterval(t);
+  },[canNext]);// eslint-disable-line
+
+  return(
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:16}}>
       <style>{GS.base}</style>
-      <Panel style={{maxWidth:480,width:"100%",overflow:"hidden"}}>
-        <div style={{padding:"20px 20px 16px",borderBottom:"1px solid rgba(0,0,0,.06)",textAlign:"center"}}>
-          <div style={{fontSize:40,marginBottom:6}}>{roundResult.claimerWon?"🎉":"😬"}</div>
-          <div style={{fontWeight:900,fontSize:20,marginBottom:4}}>Round {round} Result</div>
-          <div style={{fontSize:13,color:roundResult.claimerWon?T.green:T.red,fontWeight:600}}>
+      <div style={{maxWidth:480,width:"100%"}}>
+
+        {/* Header */}
+        <div style={{textAlign:"center",marginBottom:14}}>
+          <div style={{fontSize:36,marginBottom:4}}>{roundResult.claimerWon?"🎉":"😬"}</div>
+          <div style={{fontWeight:900,fontSize:20,marginBottom:3}}>Round {round}</div>
+          <div style={{fontSize:13,color:roundResult.claimerWon?T.green:T.red,fontWeight:700}}>
             {roundResult.claimerWon
-              ?`${roundResult.claimerName} wins! (+0 pts) ✓`
-              :`${roundResult.claimerName} wrong SHOW! (+${penaltyPoints} pts penalty)`
+              ?`${roundResult.claimerName} wins the round! (+0 pts) ✓`
+              :`${roundResult.claimerName} wrong SHOW! (+${penaltyPoints} pts)`
             }
           </div>
         </div>
 
-        {/* Hands */}
-        <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(0,0,0,.06)"}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Hands Revealed</div>
-          {roundResult.results.map(r=>(
-            <div key={r.name} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:5,marginBottom:8}}>
-              <span style={{fontSize:12,fontWeight:700,minWidth:50,color:T.ink}}>{r.name}:</span>
-              {r.hand.map((c,i)=><Card key={i} card={c} small/>)}
-              <span style={{fontFamily:T.mono,fontSize:12,color:r.pts<=10?T.green:T.red,fontWeight:700,marginLeft:4}}>{r.pts}pt</span>
-            </div>
+        {/* Tab switcher */}
+        <div style={{display:"flex",background:"rgba(0,0,0,.06)",borderRadius:10,padding:3,marginBottom:12,gap:3}}>
+          {[["result","📊 This Round"],["history","📜 Points History"]].map(([t,label])=>(
+            <button key={t} onClick={()=>setTab(t)}
+              style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+                background:tab===t?"#fff":"transparent",color:tab===t?T.ink:T.muted,
+                boxShadow:tab===t?T.shadow:"none",transition:"all .2s",fontFamily:T.font}}>
+              {label}
+            </button>
           ))}
         </div>
 
-        {/* Scores */}
-        <div style={{padding:"14px 20px 20px"}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Scores</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
-            {allPlayers.map(name=>{
-              const sc=roundResult.newScores?.[name]??scores?.[name]??0;
-              const isElim=(roundResult.justElim||[]).includes(name);
-              const pct=Math.min(100,(sc/scoreLimit)*100);
-              return(
-                <div key={name} style={{opacity:isElim?.45:1}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                    <span style={{fontWeight:600,fontSize:13}}>{isElim?"💀 ":""}{name}{isElim&&<span style={{marginLeft:6,fontSize:10,background:T.red,color:"#fff",borderRadius:4,padding:"1px 6px",fontWeight:700}}>OUT</span>}</span>
-                    <span style={{fontFamily:T.mono,fontSize:12,color:pct>80?T.red:T.muted}}>{sc}/{scoreLimit}</span>
-                  </div>
-                  <div style={{height:4,background:"rgba(0,0,0,.06)",borderRadius:2}}>
-                    <div style={{height:"100%",width:`${pct}%`,background:pct>80?T.red:pct>55?T.gold:T.green,borderRadius:2,transition:"width .5s"}}/>
-                  </div>
+        {tab==="result"&&(
+          <Panel style={{overflow:"hidden"}}>
+            {/* Hands revealed */}
+            <div style={{padding:"14px 16px",borderBottom:"1px solid rgba(0,0,0,.06)"}}>
+              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Hands</div>
+              {roundResult.results.map(r=>(
+                <div key={r.name} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:4,marginBottom:8}}>
+                  <span style={{fontSize:12,fontWeight:700,minWidth:48,color:T.ink}}>{r.name}:</span>
+                  {r.hand.map((c,i)=><Card key={i} card={c} small/>)}
+                  <span style={{fontFamily:T.mono,fontSize:12,fontWeight:700,marginLeft:4,
+                    color:r.pts===0?T.green:r.pts<=10?T.green:T.red}}>{r.pts}pt</span>
                 </div>
-              );
-            })}
-          </div>
-          {canNext
-            ?<Btn onClick={onNext} style={{width:"100%"}}>Next Round →</Btn>
-            :<div style={{textAlign:"center",color:T.muted,fontSize:13}}>Waiting for host...</div>
-          }
+              ))}
+            </div>
+
+            {/* Score bars */}
+            <div style={{padding:"14px 16px"}}>
+              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Total Scores</div>
+              {allPlayers.map(name=>{
+                const sc=roundResult.newScores?.[name]??scores?.[name]??0;
+                const prev=(scores?.[name]??0);
+                const gained=sc-prev;
+                const isElim=(roundResult.justElim||[]).includes(name);
+                const pct=Math.min(100,(sc/scoreLimit)*100);
+                return(
+                  <div key={name} style={{marginBottom:10,opacity:isElim?.45:1}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                      <span style={{fontWeight:700,fontSize:13}}>
+                        {isElim?"💀 ":""}{name}
+                        {isElim&&<span style={{marginLeft:6,fontSize:9,background:T.red,color:"#fff",borderRadius:3,padding:"1px 5px",fontWeight:700}}>OUT</span>}
+                      </span>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        {gained>0&&<span style={{fontSize:11,color:T.red,fontWeight:700,fontFamily:T.mono}}>+{gained}</span>}
+                        {gained===0&&<span style={{fontSize:11,color:T.green,fontWeight:700,fontFamily:T.mono}}>+0 ✓</span>}
+                        <span style={{fontFamily:T.mono,fontSize:13,fontWeight:700,color:pct>80?T.red:T.ink}}>{sc}<span style={{fontSize:10,color:T.muted,fontWeight:400}}>/{scoreLimit}</span></span>
+                      </div>
+                    </div>
+                    <div style={{height:5,background:"rgba(0,0,0,.06)",borderRadius:3}}>
+                      <div style={{height:"100%",width:`${pct}%`,background:pct>80?T.red:pct>55?T.gold:T.green,borderRadius:3,transition:"width .6s"}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+        )}
+
+        {tab==="history"&&(
+          <Panel style={{overflow:"hidden"}}>
+            <div style={{padding:"14px 16px"}}>
+              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Points Per Round</div>
+              {history&&history.length>0?(
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <thead>
+                      <tr style={{borderBottom:"2px solid rgba(0,0,0,.08)"}}>
+                        <th style={{textAlign:"left",padding:"6px 8px",fontWeight:700,color:T.muted,fontSize:10,textTransform:"uppercase",letterSpacing:.5}}>Round</th>
+                        {allPlayers.map(name=>(
+                          <th key={name} style={{textAlign:"center",padding:"6px 8px",fontWeight:700,color:T.muted,fontSize:10,textTransform:"uppercase",letterSpacing:.5,whiteSpace:"nowrap"}}>{name}</th>
+                        ))}
+                        <th style={{textAlign:"center",padding:"6px 8px",fontWeight:700,color:T.muted,fontSize:10,textTransform:"uppercase",letterSpacing:.5}}>Winner</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((h,i)=>(
+                        <tr key={i} style={{borderBottom:"1px solid rgba(0,0,0,.05)",background:i%2===0?"transparent":"rgba(0,0,0,.02)"}}>
+                          <td style={{padding:"8px",fontWeight:700,fontFamily:T.mono,color:T.muted,fontSize:11}}>R{h.round}</td>
+                          {allPlayers.map(name=>{
+                            const gained=h.gained?.[name]??0;
+                            return(
+                              <td key={name} style={{textAlign:"center",padding:"8px",fontFamily:T.mono,fontSize:12,
+                                fontWeight:gained>0?700:400,
+                                color:gained===0?T.green:gained>50?T.red:T.gold}}>
+                                {gained===0?"+0 ✓":`+${gained}`}
+                              </td>
+                            );
+                          })}
+                          <td style={{textAlign:"center",padding:"8px",fontSize:11,fontWeight:700,color:T.accent}}>{h.winner}</td>
+                        </tr>
+                      ))}
+                      {/* Total row */}
+                      <tr style={{borderTop:"2px solid rgba(0,0,0,.1)",background:"rgba(37,99,235,.04)"}}>
+                        <td style={{padding:"8px",fontWeight:900,fontSize:12,color:T.ink}}>Total</td>
+                        {allPlayers.map(name=>{
+                          const sc=roundResult.newScores?.[name]??scores?.[name]??0;
+                          const pct=Math.min(100,(sc/scoreLimit)*100);
+                          return(
+                            <td key={name} style={{textAlign:"center",padding:"8px",fontFamily:T.mono,fontWeight:900,fontSize:13,
+                              color:pct>80?T.red:pct>55?T.gold:T.green}}>
+                              {sc}
+                            </td>
+                          );
+                        })}
+                        <td/>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ):(
+                <div style={{textAlign:"center",padding:"20px",color:T.muted,fontSize:13}}>No history yet</div>
+              )}
+            </div>
+          </Panel>
+        )}
+
+        {/* Auto-advance bar — no button needed */}
+        <div style={{marginTop:12,textAlign:"center"}}>
+          {canNext?(
+            <div>
+              <div style={{fontSize:12,color:T.muted,marginBottom:6}}>Next round in <strong style={{color:T.accent}}>{countdown}s</strong></div>
+              <div style={{height:4,background:"rgba(0,0,0,.08)",borderRadius:2,overflow:"hidden"}}>
+                <div style={{height:"100%",background:T.accent,borderRadius:2,
+                  width:`${(countdown/AUTO_NEXT)*100}%`,transition:"width 1s linear"}}/>
+              </div>
+            </div>
+          ):(
+            <div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>Waiting for host to continue...</div>
+          )}
         </div>
-      </Panel>
+
+      </div>
     </div>
   );
 }
@@ -739,6 +925,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [dropIdxs,setDropIdxs]=useState([]);
   const [msg,setMsg]=useState("");
   const [showRules,setShowRules]=useState(false);
+  const [showHistory,setShowHistory]=useState(false);
   const [showGate,setShowGate]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
@@ -767,6 +954,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         prevTurnRef.current=turnKey;
         setDrawFrom(null);setDropIdxs([]);setShowGate(true);
         setMsg("Pick source · select drop · SWAP");
+        vibrate([100,50,100]); // buzz buzz = your turn!
         startTimer();
       }
       if(g.roundResult?.justElim?.length>0&&!g.roundResult.shown)setNewlyElim(g.roundResult.justElim);
@@ -812,14 +1000,14 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     else{drew=pile[pile.length-1];np=pile.slice(0,-1);}
     const kept=myHand.filter((_,i)=>!dropIdxs.includes(i));
     np=[...np,...dropping];
-    clearInterval(timerRef.current);
+    clearInterval(timerRef.current);setShowContinue(false);
     const next=(turnIdx+1)%activePlayers.length;
     await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:[...kept,drew]},turnIdx:next,lastAction:Date.now()});
     setDrawFrom(null);setDropIdxs([]);
   }
   async function doShow(){
     if(!isMyTurn)return;
-    clearInterval(timerRef.current);
+    clearInterval(timerRef.current);setShowContinue(false);
     const wc=wildCard||null;
     const penaltyPts=penalty||50;
     const results=activePlayers.map(name=>({name,hand:hands[name]||[],pts:handTotal(hands[name]||[],wc)}));
@@ -834,7 +1022,13 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const newElim=[...(eliminated||[]),...justElim];
     const newActive=activePlayers.filter(n=>!newElim.includes(n));
     const winner=newActive.length<=1?newActive[0]||activePlayers[0]:null;
-    await pushGs({scores:newScores,eliminated:newElim,activePlayers:newActive,roundResult:{results,claimerName:myName,claimerWon,claimerPts,lowestPts,justElim,newScores,shown:false},gameWinner:winner,lastAction:Date.now()});
+    const gained={};
+    activePlayers.forEach(n=>{gained[n]=(newScores[n]||0)-(scores[n]||0);});
+    const histEntry={round:round||1,winner:claimerWon?myName:"❌",gained};
+    const newHistory=[...(gs.history||[]),histEntry];
+    await pushGs({scores:newScores,eliminated:newElim,activePlayers:newActive,
+      roundResult:{results,claimerName:myName,claimerWon,claimerPts,lowestPts,justElim,newScores,shown:false},
+      history:newHistory,gameWinner:winner,lastAction:Date.now()});
   }
   async function nextRound(){
     const ap=gs.activePlayers;
@@ -854,7 +1048,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   }
 
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
-  if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit||300} penaltyPoints={penalty||50} onNext={nextRound} canNext={isMyTurn||roundResult.claimerName===myName}/>;
+  if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit||300} penaltyPoints={penalty||50} onNext={nextRound} canNext={isMyTurn||roundResult.claimerName===myName} history={gs.history||[]}/>;
   if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
   if(showGate&&isMyTurn)return <TurnGate playerName={myName} onReady={()=>{setShowGate(false);startTimer();}}/>;
 
@@ -873,6 +1067,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
+          <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
         </div>
@@ -980,6 +1175,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         </div>
       </div>
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
+      {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
     </div>
   );
 }
@@ -1002,15 +1198,17 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [dropIdxs,setDropIdxs]=useState([]);
   const [msg,setMsg]=useState("");
   const [showRules,setShowRules]=useState(false);
+  const [showHistory,setShowHistory]=useState(false);
   const [roundResult,setRoundResult]=useState(null);
   const [newlyElim,setNewlyElim]=useState([]);
   const [gameWinner,setGameWinner]=useState(null);
   const [wildCard,setWildCard]=useState(null);
+  const [history,setHistory]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
   const aiTimer=useRef(null);
   const turnTimerRef=useRef(null);
 
-  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);turnTimerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;});},1000);}
+  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;});},1000);}
   useEffect(()=>()=>clearInterval(turnTimerRef.current),[]);
 
   function deal(ap, roundNum){
@@ -1033,11 +1231,21 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     if(timeLeft!==0||roundResult||gameWinner)return;
     if(!isMyTurn)return;
     clearInterval(turnTimerRef.current);
+    setShowContinueAI(true);
+  },[timeLeft]);// eslint-disable-line
+
+  function onContinueAI(){
+    setShowContinueAI(false);
+    setTimeLeft(10);
+    turnTimerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;});},1000);
+  }
+  function onSkipAI(){
+    setShowContinueAI(false);
     const next=(turnIdx+1)%active.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
-    setMsg(`⏱ Time's up!`);
+    setMsg(`⏱ Time's up! ${active[next]==="You"?"Your turn":`${active[next]}'s turn`}`);
     if(!isAI(active[next]))startTurnTimer();
-  },[timeLeft]);// eslint-disable-line
+  }
 
   const currentPlayer=active[turnIdx];
   const isMyTurn=currentPlayer===YOU;
@@ -1078,6 +1286,10 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const newScores={...scores};
     if(claimerWon){results.forEach(r=>{if(r.name!==claimerName)newScores[r.name]=(newScores[r.name]||0)+r.pts;});}
     else{newScores[claimerName]=(newScores[claimerName]||0)+penaltyPoints;}
+    // Record history
+    const gained={};
+    allPlayers.forEach(n=>{gained[n]=(newScores[n]||0)-(scores[n]||0);});
+    setHistory(h=>[...h,{round,winner:claimerWon?claimerName:"❌",gained}]);
     setScores(newScores);
     const justElim=active.filter(n=>newScores[n]>=scoreLimit&&!eliminated.includes(n));
     const newElim=[...eliminated,...justElim];
@@ -1117,20 +1329,20 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const kept=hand.filter((_,i)=>!dropIdxs.includes(i));
     np=[...np,...dropping];
     setStock(ns);setPile(np);setHands(p=>({...p,[YOU]:[...kept,drew]}));
-    clearInterval(turnTimerRef.current);
+    clearInterval(turnTimerRef.current);setShowContinueAI(false);
     const next=(turnIdx+1)%active.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
     if(!isAI(active[next]))startTurnTimer();
     setMsg(isAI(active[next])?`${active[next]}'s turn...`:"Pick source · select drop · SWAP");
   }
-  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);handleClaim(YOU,hands[YOU],wildCard);}
+  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);setShowContinueAI(false);handleClaim(YOU,hands[YOU],wildCard);}
 
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
   const readySwap=isMyTurn&&drawFrom!==null&&dropIdxs.length>0;
 
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={()=>{setGameWinner(null);onQuit();}} onQuit={onQuit}/>;
-  if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true}/>;
+  if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true} history={history}/>;
   if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>{const nr=round+1;setNewlyElim([]);setRound(nr);deal(active.filter(n=>!eliminated.includes(n)),nr);}}/>;
 
   return(
@@ -1143,6 +1355,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
           <span style={{fontSize:11,color:T.muted,background:"rgba(0,0,0,.06)",borderRadius:20,padding:"2px 8px"}}>Round {round} · 🤖</span>
         </div>
         <div style={{display:"flex",gap:7}}>
+          <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
         </div>
@@ -1240,6 +1453,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
         </div>
       </Panel>
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
+      {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
     </div>
   );
 }
