@@ -898,18 +898,27 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
           </Panel>
         )}
 
-        {/* Auto-advance bar — no button needed */}
-        <div style={{marginTop:12,textAlign:"center"}}>
+        {/* Auto-advance countdown circle */}
+        <div style={{marginTop:16,textAlign:"center"}}>
           {canNext?(
-            <div>
-              <div style={{fontSize:12,color:T.muted,marginBottom:6}}>Next round in <strong style={{color:T.accent}}>{countdown}s</strong></div>
-              <div style={{height:4,background:"rgba(0,0,0,.08)",borderRadius:2,overflow:"hidden"}}>
-                <div style={{height:"100%",background:T.accent,borderRadius:2,
-                  width:`${(countdown/AUTO_NEXT)*100}%`,transition:"width 1s linear"}}/>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <div style={{position:"relative",width:72,height:72}}>
+                <svg width={72} height={72} style={{transform:"rotate(-90deg)",position:"absolute",top:0,left:0}}>
+                  <circle cx={36} cy={36} r={30} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth={5}/>
+                  <circle cx={36} cy={36} r={30} fill="none" stroke={T.accent} strokeWidth={5}
+                    strokeDasharray={2*Math.PI*30}
+                    strokeDashoffset={2*Math.PI*30*(1-countdown/AUTO_NEXT)}
+                    style={{transition:"stroke-dashoffset 1s linear"}}/>
+                </svg>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:22,fontWeight:900,color:T.accent,fontFamily:T.mono}}>
+                  {countdown}
+                </div>
               </div>
+              <div style={{fontSize:12,color:T.muted,fontWeight:500}}>Next round starting...</div>
             </div>
           ):(
-            <div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>Waiting for host to continue...</div>
+            <div style={{fontSize:12,color:T.muted,fontStyle:"italic",padding:"12px 0"}}>⏳ Waiting for host...</div>
           )}
         </div>
 
@@ -940,6 +949,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     if(!gs||!gs.activePlayers||timeLeft!==0)return;
     const cp=gs.activePlayers[gs.turnIdx];
     if(cp!==myName)return;
+    vibrate([300]); // long buzz = time's up!
     const next=(gs.turnIdx+1)%gs.activePlayers.length;
     dbMerge(`rooms/${roomCode}/gameState`,{turnIdx:next,lastAction:Date.now()});
   },[timeLeft]);// eslint-disable-line
@@ -1050,7 +1060,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
   if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit||300} penaltyPoints={penalty||50} onNext={nextRound} canNext={isMyTurn||roundResult.claimerName===myName} history={gs.history||[]}/>;
   if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
-  if(showGate&&isMyTurn)return <TurnGate playerName={myName} onReady={()=>{setShowGate(false);startTimer();}}/>;
+  if(showGate&&isMyTurn)return <TurnGate playerName={myName} onReady={()=>{vibrate([100,50,100]);setShowGate(false);startTimer();}}/>;
 
   const sl=scoreLimit||300;
   const opponents=activePlayers.filter(n=>n!==myName);
