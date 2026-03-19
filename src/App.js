@@ -1304,6 +1304,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [wildCard,setWildCard]=useState(null);
   const [history,setHistory]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
+  const [showContinueAI,setShowContinueAI]=useState(false);
   const aiTimer=useRef(null);
   const turnTimerRef=useRef(null);
 
