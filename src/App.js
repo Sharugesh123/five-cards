@@ -782,6 +782,7 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
   const AUTO_NEXT=10; // auto-advance after 10 seconds
   const [countdown,setCountdown]=useState(AUTO_NEXT);
   useEffect(()=>{
+    if(!canNext)return; // only ONE player (host/claimer) triggers nextRound
     const t=setInterval(()=>{
       setCountdown(p=>{
         if(p<=1){clearInterval(t);onNext();return 0;}
@@ -789,7 +790,7 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
       });
     },1000);
     return()=>clearInterval(t);
-  },[]);// eslint-disable-line
+  },[canNext]);// eslint-disable-line
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:16}}>
@@ -925,24 +926,30 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
           </Panel>
         )}
 
-        {/* Auto-advance countdown — always shown, no button */}
+        {/* Auto-advance countdown */}
         <div style={{marginTop:16,textAlign:"center"}}>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-            <div style={{position:"relative",width:72,height:72}}>
-              <svg width={72} height={72} style={{transform:"rotate(-90deg)",position:"absolute",top:0,left:0}}>
-                <circle cx={36} cy={36} r={30} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth={5}/>
-                <circle cx={36} cy={36} r={30} fill="none" stroke={T.accent} strokeWidth={5}
-                  strokeDasharray={2*Math.PI*30}
-                  strokeDashoffset={2*Math.PI*30*(1-countdown/AUTO_NEXT)}
-                  style={{transition:"stroke-dashoffset 1s linear"}}/>
-              </svg>
-              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:22,fontWeight:900,color:T.accent,fontFamily:T.mono}}>
-                {countdown}
+          {canNext?(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <div style={{position:"relative",width:72,height:72}}>
+                <svg width={72} height={72} style={{transform:"rotate(-90deg)",position:"absolute",top:0,left:0}}>
+                  <circle cx={36} cy={36} r={30} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth={5}/>
+                  <circle cx={36} cy={36} r={30} fill="none" stroke={T.accent} strokeWidth={5}
+                    strokeDasharray={2*Math.PI*30}
+                    strokeDashoffset={2*Math.PI*30*(1-countdown/AUTO_NEXT)}
+                    style={{transition:"stroke-dashoffset 1s linear"}}/>
+                </svg>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:22,fontWeight:900,color:T.accent,fontFamily:T.mono}}>
+                  {countdown}
+                </div>
               </div>
+              <div style={{fontSize:13,color:T.muted,fontWeight:600}}>Next round in {countdown}s...</div>
             </div>
-            <div style={{fontSize:13,color:T.muted,fontWeight:600}}>Next round in {countdown}s...</div>
-          </div>
+          ):(
+            <div style={{padding:"16px 0",textAlign:"center"}}>
+              <div style={{fontSize:12,color:T.muted,fontStyle:"italic"}}>⏳ Starting next round...</div>
+            </div>
+          )}
         </div>
 
       </div>
@@ -1031,8 +1038,22 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const allPlayers=[...activePlayers,...(eliminated||[])];
 
   async function pushGs(u){await dbMerge(`rooms/${roomCode}/gameState`,u);}
-  function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
-  function selPile(){if(!isMyTurn||!pile?.length)return;setDrawFrom(p=>p==="pile"?null:"pile");}
+  function selStock(){
+    if(!isMyTurn)return;
+    setDrawFrom(p=>{
+      const next=p==="stock"?null:"stock";
+      if(next!==p)setDropIdxs([]); // reset drop when source changes
+      return next;
+    });
+  }
+  function selPile(){
+    if(!isMyTurn||!pile?.length)return;
+    setDrawFrom(p=>{
+      const next=p==="pile"?null:"pile";
+      if(next!==p)setDropIdxs([]); // reset drop when source changes
+      return next;
+    });
+  }
   function toggleDrop(idx){
     if(!isMyTurn)return;
     setDropIdxs(p=>{
@@ -1042,8 +1063,12 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     });
   }
   async function doSwap(){
+    if(!isMyTurn)return; // must be your turn
     if(!drawFrom||!dropIdxs.length)return;
+    if(!stock?.length&&drawFrom==="stock")return;
+    if(!pile?.length&&drawFrom==="pile")return;
     const dropping=dropIdxs.map(i=>myHand[i]);
+    if(!dropping.length)return;
     let drew,ns=[...stock],np=[...pile];
     if(drawFrom==="stock"){drew=stock[0];ns=stock.slice(1);}
     else{drew=pile[pile.length-1];np=pile.slice(0,-1);}
@@ -1051,7 +1076,12 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     np=[...np,...dropping];
     clearInterval(timerRef.current);setShowContinue(false);
     const next=(turnIdx+1)%activePlayers.length;
-    await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:[...kept,drew]},turnIdx:next,lastAction:Date.now()});
+    await pushGs({
+      stock:ns,pile:np,
+      hands:{...hands,[myName]:[...kept,drew]},
+      turnIdx:next,
+      lastAction:Date.now()
+    });
     setDrawFrom(null);setDropIdxs([]);
   }
   async function doShow(){
@@ -1357,8 +1387,14 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     }
   }
 
-  function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
-  function selPile(){if(!isMyTurn||!pile.length)return;setDrawFrom(p=>p==="pile"?null:"pile");}
+  function selStock(){
+    if(!isMyTurn)return;
+    setDrawFrom(p=>{const n=p==="stock"?null:"stock";if(n!==p)setDropIdxs([]);return n;});
+  }
+  function selPile(){
+    if(!isMyTurn||!pile.length)return;
+    setDrawFrom(p=>{const n=p==="pile"?null:"pile";if(n!==p)setDropIdxs([]);return n;});
+  }
   function toggleDrop(idx){
     if(!isMyTurn)return;
     const hand=hands[YOU];
@@ -1369,9 +1405,11 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     });
   }
   function doSwap(){
-    if(!drawFrom||!dropIdxs.length)return;
+    if(!isMyTurn||!drawFrom||!dropIdxs.length)return;
     const hand=hands[YOU];
+    if(!hand||!hand.length)return;
     const dropping=dropIdxs.map(i=>hand[i]);
+    if(!dropping.length)return;
     let drew,ns=[...stock],np=[...pile];
     if(drawFrom==="stock"){if(!stock.length)return;drew=stock[0];ns=stock.slice(1);}
     else{if(!pile.length)return;drew=pile[pile.length-1];np=pile.slice(0,-1);}
