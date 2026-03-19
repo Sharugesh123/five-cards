@@ -209,6 +209,35 @@ function FanCards({count=5}){
 }
 
 // ── Continue Popup (shown when timer hits 0) ──────────────────────────────────
+function ContinuePopup({onContinue, onSkip}){
+  const [sec,setSec]=useState(8);
+  useEffect(()=>{
+    const t=setInterval(()=>{
+      setSec(p=>{
+        if(p<=1){clearInterval(t);onSkip();return 0;}
+        return p-1;
+      });
+    },1000);
+    return()=>clearInterval(t);
+  },[]);// eslint-disable-line
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",backdropFilter:"blur(6px)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:20,padding:"32px 28px",textAlign:"center",maxWidth:300,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+        <div style={{fontSize:44,marginBottom:10}}>⏱</div>
+        <div style={{fontWeight:900,fontSize:20,marginBottom:6,color:T.red}}>Time's Up!</div>
+        <div style={{fontSize:13,color:T.muted,marginBottom:24}}>Need more time? Auto-skip in <strong style={{color:T.ink}}>{sec}s</strong></div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onSkip} style={{flex:1,padding:"12px",borderRadius:10,border:"none",cursor:"pointer",background:"rgba(0,0,0,.07)",color:T.ink,fontSize:14,fontWeight:700,fontFamily:T.font}}>
+            Skip Turn
+          </button>
+          <button onClick={onContinue} style={{flex:1,padding:"12px",borderRadius:10,border:"none",cursor:"pointer",background:T.green,color:"#fff",fontSize:14,fontWeight:700,fontFamily:T.font,boxShadow:"0 4px 12px rgba(16,185,129,.4)"}}>
+            +10s ▶
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Timer ring ─────────────────────────────────────────────────────────────────
 function TimerRing({timeLeft,total=30}){
@@ -750,10 +779,9 @@ function HistoryModal({onClose,history,allPlayers,scores,scoreLimit}){
 // ── Round Result Screen ────────────────────────────────────────────────────────
 function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoints,onNext,canNext,history}){
   const [tab,setTab]=useState("result"); // "result" | "history"
-  const AUTO_NEXT=5; // auto-advance after 5 seconds
+  const AUTO_NEXT=10; // auto-advance after 10 seconds
   const [countdown,setCountdown]=useState(AUTO_NEXT);
   useEffect(()=>{
-    if(!canNext)return;
     const t=setInterval(()=>{
       setCountdown(p=>{
         if(p<=1){clearInterval(t);onNext();return 0;}
@@ -761,7 +789,7 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
       });
     },1000);
     return()=>clearInterval(t);
-  },[canNext]);// eslint-disable-line
+  },[]);// eslint-disable-line
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:16}}>
@@ -897,28 +925,24 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
           </Panel>
         )}
 
-        {/* Auto-advance countdown circle */}
+        {/* Auto-advance countdown — always shown, no button */}
         <div style={{marginTop:16,textAlign:"center"}}>
-          {canNext?(
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <div style={{position:"relative",width:72,height:72}}>
-                <svg width={72} height={72} style={{transform:"rotate(-90deg)",position:"absolute",top:0,left:0}}>
-                  <circle cx={36} cy={36} r={30} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth={5}/>
-                  <circle cx={36} cy={36} r={30} fill="none" stroke={T.accent} strokeWidth={5}
-                    strokeDasharray={2*Math.PI*30}
-                    strokeDashoffset={2*Math.PI*30*(1-countdown/AUTO_NEXT)}
-                    style={{transition:"stroke-dashoffset 1s linear"}}/>
-                </svg>
-                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:22,fontWeight:900,color:T.accent,fontFamily:T.mono}}>
-                  {countdown}
-                </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+            <div style={{position:"relative",width:72,height:72}}>
+              <svg width={72} height={72} style={{transform:"rotate(-90deg)",position:"absolute",top:0,left:0}}>
+                <circle cx={36} cy={36} r={30} fill="none" stroke="rgba(0,0,0,.08)" strokeWidth={5}/>
+                <circle cx={36} cy={36} r={30} fill="none" stroke={T.accent} strokeWidth={5}
+                  strokeDasharray={2*Math.PI*30}
+                  strokeDashoffset={2*Math.PI*30*(1-countdown/AUTO_NEXT)}
+                  style={{transition:"stroke-dashoffset 1s linear"}}/>
+              </svg>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:22,fontWeight:900,color:T.accent,fontFamily:T.mono}}>
+                {countdown}
               </div>
-              <div style={{fontSize:12,color:T.muted,fontWeight:500}}>Next round starting...</div>
             </div>
-          ):(
-            <div style={{fontSize:12,color:T.muted,fontStyle:"italic",padding:"12px 0"}}>⏳ Waiting for host...</div>
-          )}
+            <div style={{fontSize:13,color:T.muted,fontWeight:600}}>Next round in {countdown}s...</div>
+          </div>
         </div>
 
       </div>
@@ -937,21 +961,33 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [showGate,setShowGate]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
+  const [showContinue,setShowContinue]=useState(false);
   const unsubRef=useRef(null);
   const prevTurnRef=useRef(null);
   const timerRef=useRef(null);
 
-  function startTimer(){clearInterval(timerRef.current);setTimeLeft(30);timerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;});},1000);}
+  function startTimer(){clearInterval(timerRef.current);setShowContinue(false);setTimeLeft(30);timerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;});},1000);}
   useEffect(()=>()=>clearInterval(timerRef.current),[]);
 
   useEffect(()=>{
     if(!gs||!gs.activePlayers||timeLeft!==0)return;
     const cp=gs.activePlayers[gs.turnIdx];
     if(cp!==myName)return;
-    vibrate([300]); // long buzz = time's up!
+    vibrate([300]);
+    setShowContinue(true); // show popup instead of auto-skip
+  },[timeLeft]);// eslint-disable-line
+
+  function onContinueOnline(){
+    clearInterval(timerRef.current);setShowContinue(false);
+    setTimeLeft(10);
+    timerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;});},1000);
+  }
+  function onSkipOnline(){
+    clearInterval(timerRef.current);setShowContinue(false);
+    if(!gs||!gs.activePlayers)return;
     const next=(gs.turnIdx+1)%gs.activePlayers.length;
     dbMerge(`rooms/${roomCode}/gameState`,{turnIdx:next,lastAction:Date.now()});
-  },[timeLeft]);// eslint-disable-line
+  }
 
   useEffect(()=>{
     const unsub=dbListen(`rooms/${roomCode}/gameState`,(g)=>{
@@ -959,12 +995,16 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       setGs(g);
       const cp=g.activePlayers[g.turnIdx];
       const turnKey=`${g.round||1}_${g.turnIdx}`;
-      if(cp===myName&&prevTurnRef.current!==turnKey){
+      if(prevTurnRef.current!==turnKey){
         prevTurnRef.current=turnKey;
-        setDrawFrom(null);setDropIdxs([]);setShowGate(true);
-        setMsg("Pick source · select drop · SWAP");
-        vibrate([100,50,100]); // buzz buzz = your turn!
-        startTimer();
+        if(cp===myName){
+          setDrawFrom(null);setDropIdxs([]);setShowGate(true);
+          setMsg("Pick source · select drop · SWAP");
+          vibrate([100,50,100]); // strong buzz = YOUR turn
+          startTimer();
+        } else {
+          vibrate([40]); // short buzz = someone else's turn
+        }
       }
       if(g.roundResult?.justElim?.length>0&&!g.roundResult.shown)setNewlyElim(g.roundResult.justElim);
     });
@@ -1057,6 +1097,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
   if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit||300} penaltyPoints={penalty||50} onNext={nextRound} canNext={isMyTurn||roundResult.claimerName===myName} history={gs.history||[]}/>;
   if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
+  if(showContinue&&isMyTurn)return <ContinuePopup onContinue={onContinueOnline} onSkip={onSkipOnline}/>;
   if(showGate&&isMyTurn)return <TurnGate playerName={myName} onReady={()=>{vibrate([100,50,100]);setShowGate(false);startTimer();}}/>;
 
   const sl=scoreLimit||300;
@@ -1215,7 +1256,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const aiTimer=useRef(null);
   const turnTimerRef=useRef(null);
 
-  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;});},1000);}
+  function startTurnTimer(){clearInterval(turnTimerRef.current);setShowContinueAI(false);setTimeLeft(30);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>{setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;});},1000);}
   useEffect(()=>()=>clearInterval(turnTimerRef.current),[]);
 
   function deal(ap, roundNum){
@@ -1279,7 +1320,8 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       setStock(ns);setPile(np);setHands(p=>({...p,[currentPlayer]:nh}));
       const next=(turnIdx+1)%active.length;
       setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
-      if(!isAI(active[next]))startTurnTimer();
+      if(!isAI(active[next])){startTurnTimer();}
+      else{vibrate([40]);} // short buzz when AI takes turn
       setMsg(isAI(active[next])?`${active[next]}'s turn...`:"Pick source · select drop · SWAP");
     },1200);
     return()=>clearTimeout(aiTimer.current);
@@ -1350,6 +1392,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
 
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={()=>{setGameWinner(null);onQuit();}} onQuit={onQuit}/>;
   if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true} history={history}/>;
+  if(showContinueAI)return <ContinuePopup onContinue={onContinueAI} onSkip={onSkipAI}/>;
   if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>{const nr=round+1;setNewlyElim([]);setRound(nr);deal(active.filter(n=>!eliminated.includes(n)),nr);}}/>;
 
   return(
