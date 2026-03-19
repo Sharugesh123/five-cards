@@ -63,60 +63,124 @@ function vibrate(pattern){
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const T = {
-  bg:      "#F4F5F7",
-  surface: "rgba(255,255,255,0.72)",
-  border:  "rgba(255,255,255,0.9)",
-  ink:     "#111218",
-  muted:   "#6B7280",
-  accent:  "#2563EB",
-  red:     "#EF4444",
-  green:   "#10B981",
-  gold:    "#F59E0B",
-  suit_r:  "#E11D48",
-  suit_b:  "#1E3A8A",
-  shadow:  "0 8px 32px rgba(0,0,0,0.10), 0 1.5px 4px rgba(0,0,0,0.06)",
-  glow_g:  "0 0 0 2.5px #10B981, 0 8px 24px rgba(16,185,129,0.25)",
-  glow_y:  "0 0 0 2.5px #F59E0B, 0 8px 24px rgba(245,158,11,0.25)",
-  font:    "'DM Sans', system-ui, sans-serif",
-  mono:    "'DM Mono', monospace",
+  bg:     "#F4F5F7",
+  yellow: "#E8B800",
+  ycheck: "#D4A800",
+  black:  "#111111",
+  white:  "#FFFFFF",
+  ink:    "#111218",
+  muted:  "#6B7280",
+  accent: "#2563EB",
+  red:    "#EF4444",
+  green:  "#16a34a",
+  gold:   "#F59E0B",
+  suit_r: "#DC2626",
+  suit_b: "#111827",
+  shadow: "0 4px 16px rgba(0,0,0,0.3)",
+  glow_g: "0 0 0 3px #16a34a, 0 0 12px rgba(22,163,74,.5)",
+  glow_y: "0 0 0 3px #eab308, 0 0 12px rgba(234,179,8,.5)",
+  font:   "'DM Sans', system-ui, sans-serif",
+  mono:   "'DM Mono', monospace",
 };
+
 
 const GS = {
   base: `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,500;0,9..40,700;0,9..40,900&family=DM+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;900&family=DM+Mono:wght@400;500&display=swap');
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{background:${T.bg};font-family:${T.font};color:${T.ink};overscroll-behavior:none;}
-    ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:2px;}
-    @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
-    @keyframes pop{0%{transform:scale(0.85);}60%{transform:scale(1.06);}100%{transform:scale(1);}}
-    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
-    @keyframes glow{0%,100%{box-shadow:0 0 8px rgba(250,204,21,.4);}50%{box-shadow:0 0 18px rgba(250,204,21,.9);}}
-    .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
-    .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
-    .game-wrap{
+    html,body,#root{width:100%;height:100%;overflow:hidden;}
+    body{font-family:'DM Sans',system-ui,sans-serif;overscroll-behavior:none;background:#111;}
+    ::-webkit-scrollbar{display:none;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+    @keyframes pop{0%{transform:scale(.8);}70%{transform:scale(1.1);}100%{transform:scale(1);}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* Yellow checker board pattern */
+    .board{
       position:fixed;inset:0;
+      background-color:#E8B800;
+      background-image:
+        radial-gradient(circle at 1px 1px, rgba(0,0,0,.06) 1px, transparent 0),
+        radial-gradient(circle at 13px 13px, rgba(0,0,0,.06) 1px, transparent 0);
+      background-size:26px 26px;
       display:flex;flex-direction:column;
-      background:radial-gradient(ellipse at center,#1a4731 0%,#0d2818 60%,#081a10 100%);
+      font-family:'DM Sans',system-ui,sans-serif;
     }
-    /* Landscape: side-by-side layout */
-    @media (orientation:landscape){
-      .game-wrap{ flex-direction:row; }
-      .game-left{ width:22%;min-width:110px;display:flex;flex-direction:column;padding:6px 4px;gap:4px;overflow-y:auto;border-right:1px solid rgba(255,255,255,.08); }
-      .game-center{ flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;gap:6px; }
-      .game-right{ width:22%;min-width:110px;display:flex;flex-direction:column;padding:6px 4px;gap:4px;overflow-y:auto;border-left:1px solid rgba(255,255,255,.08); }
-      .game-hand{ width:100%;padding:6px 8px 8px;border-top:none;border-left:none; }
-      .game-header{ flex-direction:column;gap:4px;padding:6px 4px;border-right:1px solid rgba(255,255,255,.08);width:auto;min-width:52px; }
+
+    /* Opponent pill at top center */
+    .opp-pill{
+      background:#111;color:#fff;
+      border-radius:40px;
+      padding:6px 18px 6px 10px;
+      display:inline-flex;align-items:center;gap:8px;
+      box-shadow:0 4px 12px rgba(0,0,0,.4);
+      position:relative;
     }
-    /* Portrait: stacked layout */
-    @media (orientation:portrait){
-      .game-left{ display:flex;flex-direction:row;gap:6px;padding:4px 8px;overflow-x:auto;border-bottom:1px solid rgba(255,255,255,.08); }
-      .game-center{ flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 8px;gap:8px; }
-      .game-right{ display:none; }
-      .game-hand{ width:100%;padding:8px 10px 12px;border-top:1px solid rgba(255,255,255,.08); }
-      .game-header{ flex-direction:row;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.08); }
+    .opp-pill .avatar{
+      width:36px;height:36px;border-radius:50%;
+      background:#555;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+      font-size:18px;border:2px solid #333;
+    }
+    .opp-pill .play-badge{
+      position:absolute;top:-6px;right:-6px;
+      background:linear-gradient(135deg,#c026d3,#7c3aed);
+      color:#fff;font-size:8px;font-weight:900;
+      border-radius:10px;padding:2px 6px;letter-spacing:.5px;
+    }
+    /* Card dot indicators */
+    .card-dots{display:flex;gap:4px;justify-content:center;margin-top:4px;}
+    .card-dots span{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4);}
+
+    /* Bottom bar */
+    .bottom-bar{
+      background:#111;
+      border-radius:40px 40px 0 0;
+      padding:10px 16px 14px;
+      display:flex;align-items:center;gap:10px;
+      box-shadow:0 -4px 20px rgba(0,0,0,.4);
+      flex-shrink:0;
+    }
+    .bottom-bar .avatar{
+      width:44px;height:44px;border-radius:50%;
+      background:#555;overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+      font-size:20px;border:2px solid #333;flex-shrink:0;
+    }
+    .bottom-bar .player-name{color:#fff;font-weight:700;font-size:14px;}
+
+    /* Circular action buttons */
+    .circ-btn{
+      width:46px;height:46px;border-radius:50%;border:none;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      font-size:10px;font-weight:900;letter-spacing:.3px;
+      box-shadow:0 2px 8px rgba(0,0,0,.4);flex-shrink:0;
+      font-family:'DM Sans',system-ui,sans-serif;
+    }
+
+    /* Cards in hand */
+    .hand-card{
+      border-radius:10px;background:#fff;
+      border:2px solid #e5e7eb;
+      box-shadow:0 4px 12px rgba(0,0,0,.2);
+      cursor:pointer;user-select:none;flex-shrink:0;
+      transition:transform .15s,box-shadow .15s;
+    }
+    .hand-card.selected{
+      border-color:#16a34a!important;
+      box-shadow:0 0 0 3px #16a34a,0 4px 12px rgba(0,0,0,.2)!important;
+      transform:translateY(-12px)!important;
+    }
+    .hand-card.glow{
+      border-color:#eab308!important;
+      box-shadow:0 0 0 3px #eab308,0 4px 12px rgba(0,0,0,.2)!important;
+      transform:translateY(-6px)!important;
     }
   `
 };
+
+
 
 // ── Game logic ─────────────────────────────────────────────────────────────────
 const SUITS = ["♠","♥","♦","♣"];
@@ -1175,143 +1239,157 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const sl=scoreLimit||300;
   const opponents=activePlayers.filter(n=>n!==myName);
 
-  const stepsDone=[drawFrom!=null, dropIdxs.length>0, readySwap];
+  // Avatar initials helper
+  const initials = n => n.slice(0,2).toUpperCase();
+  const avatarColor = n => {
+    const colors=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626"];
+    let h=0; for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);
+    return colors[Math.abs(h)%colors.length];
+  };
 
   return(
-    <div className="game-wrap" style={{fontFamily:T.font}}>
+    <div className="board" style={{fontFamily:T.font}}>
       <style>{GS.base}</style>
 
-      {/* ── Header (vertical strip in landscape, horizontal bar in portrait) ── */}
-      <div className="game-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(0,0,0,.4)",zIndex:10,flexShrink:0}}>
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          <span style={{fontWeight:900,fontSize:13,color:T.gink,letterSpacing:-.3}}>5 CARDS</span>
-          <span style={{fontSize:9,color:T.gmuted,background:"rgba(255,255,255,.08)",borderRadius:8,padding:"1px 5px",textAlign:"center"}}>R{round} 🌐</span>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",justifyContent:"center"}}>
-          {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <button onClick={()=>setShowHistory(true)} style={{background:"none",border:"none",color:T.gmuted,fontSize:14,cursor:"pointer",padding:"2px 4px"}}>📜</button>
-          <button onClick={()=>setShowRules(true)} style={{background:"none",border:"none",color:T.gmuted,fontSize:11,cursor:"pointer",padding:"2px 4px",fontFamily:T.font,fontWeight:700}}>Rules</button>
-          <button onClick={onQuit} style={{background:"rgba(239,68,68,.2)",border:"1px solid rgba(239,68,68,.4)",color:"#fca5a5",fontSize:10,borderRadius:6,cursor:"pointer",padding:"3px 7px",fontFamily:T.font,fontWeight:700}}>Exit</button>
-        </div>
-      </div>
+      {/* ── TOP: Opponents ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:"8px 12px 4px",position:"relative"}}>
 
-      {/* ── Left: Opponents ── */}
-      <div className="game-left">
-        {/* Scores compact */}
-        {activePlayers.map(name=>{
-          const sc=scores?.[name]||0;
-          const pct=Math.min(100,(sc/sl)*100);
-          const isCur=currentPlayer===name;
-          const isMe=name===myName;
-          const isElim=(eliminated||[]).includes(name);
-          return(
-            <div key={name} style={{background:isCur?"rgba(250,204,21,.15)":"rgba(0,0,0,.25)",borderRadius:8,padding:"5px 7px",
-              border:isCur?"1px solid rgba(250,204,21,.5)":"1px solid rgba(255,255,255,.07)",opacity:isElim?.4:1,flexShrink:0}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <span style={{fontSize:10,fontWeight:700,color:isCur?"#facc15":isMe?T.gink:T.gmuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:60}}>
-                  {isElim?"💀":isCur?"▶":""} {isMe?"You":name}
-                </span>
-                <span style={{fontSize:10,fontFamily:T.mono,color:pct>80?"#f87171":"#86efac"}}>{sc}</span>
+        {/* Score chips top-left */}
+        <div style={{position:"absolute",top:8,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
+          {activePlayers.map(name=>{
+            const sc=scores?.[name]||0;
+            const pct=Math.min(100,(sc/sl)*100);
+            const isMe=name===myName;
+            const isCur=currentPlayer===name;
+            return(
+              <div key={name} style={{background:isCur?"rgba(0,0,0,.8)":"rgba(0,0,0,.55)",borderRadius:20,padding:"3px 10px 3px 6px",display:"flex",alignItems:"center",gap:5,border:isCur?"1.5px solid #facc15":"1.5px solid transparent"}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:avatarColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:900}}>{initials(name)}</div>
+                <span style={{fontSize:10,color:"#fff",fontWeight:700}}>{isMe?"You":name}</span>
+                <span style={{fontSize:10,color:pct>70?"#f87171":"#86efac",fontWeight:700,fontFamily:T.mono}}>{sc}</span>
               </div>
-              <div style={{height:3,background:"rgba(255,255,255,.1)",borderRadius:2}}>
-                <div style={{height:"100%",width:`${pct}%`,background:pct>80?"#ef4444":pct>55?"#f59e0b":"#22c55e",borderRadius:2,transition:"width .5s"}}/>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
 
-        {/* Opponents fanned cards */}
-        {opponents.map(name=>{
-          const h=hands?.[name]||[];
-          const isCur=currentPlayer===name;
-          return(
-            <div key={name} style={{background:isCur?"rgba(250,204,21,.1)":"rgba(0,0,0,.2)",borderRadius:10,padding:"6px",textAlign:"center",
-              border:isCur?"1px solid rgba(250,204,21,.4)":"1px solid rgba(255,255,255,.07)",flexShrink:0}}>
-              <div style={{fontSize:10,fontWeight:700,color:isCur?"#facc15":T.gmuted,marginBottom:4}}>{name}{isCur?" ⏳":""}</div>
-              <FanCards count={h.length||5}/>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── Centre: Table ── */}
-      <div className="game-center">
-        {/* Wild card */}
-        {wildCard&&(
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,fontWeight:700,color:"#fbbf24",letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>🌟 Wild · 0pts</div>
-            <Card card={wildCard} small/>
+        {/* Timer top-right */}
+        {isMyTurn&&(
+          <div style={{position:"absolute",top:8,right:8,zIndex:5}}>
+            <TimerRing timeLeft={timeLeft}/>
           </div>
         )}
 
-        {/* Stock + Discard */}
-        <div style={{display:"flex",gap:16,alignItems:"flex-end",justifyContent:"center"}}>
+        {/* Opponents — each gets a pill with fanned cards */}
+        <div style={{display:"flex",gap:20,justifyContent:"center",flexWrap:"wrap"}}>
+          {opponents.map(name=>{
+            const h=hands?.[name]||[];
+            const isCur=currentPlayer===name;
+            return(
+              <div key={name} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                {/* Fanned cards above pill */}
+                <FanCards count={h.length||5}/>
+                {/* Pill */}
+                <div className="opp-pill" style={{border:isCur?"2px solid #facc15":"2px solid transparent"}}>
+                  <div className="avatar" style={{background:avatarColor(name)}}>
+                    <span style={{fontSize:14,fontWeight:900,color:"#fff"}}>{initials(name)}</span>
+                  </div>
+                  <span style={{fontWeight:700,fontSize:13}}>{name}</span>
+                  {isCur&&<span className="play-badge">PLAY</span>}
+                  <div className="card-dots">
+                    {h.map((_,i)=><span key={i}/>)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Centre: Stock + Discard + Wild ── */}
+        <div style={{display:"flex",alignItems:"center",gap:16,justifyContent:"center"}}>
+          {/* Wild card (small) */}
+          {wildCard&&(
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,.5)",letterSpacing:.5,textTransform:"uppercase",marginBottom:3}}>Wild</div>
+              <Card card={wildCard} small/>
+            </div>
+          )}
+
+          {/* Stock */}
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,color:T.gmuted,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock?.length||0})</div>
             {stock?.length>0
-              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓":null}/>
-              :<div style={{width:44,height:62,borderRadius:8,border:"2px dashed rgba(255,255,255,.15)"}}/>
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Draw":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)",background:"rgba(0,0,0,.05)"}}/>
             }
+            <div style={{fontSize:9,color:"rgba(0,0,0,.5)",marginTop:3,fontWeight:600}}>{stock?.length||0} left</div>
           </div>
+
+          {/* Discard */}
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,color:T.gmuted,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
             {pileTop
-              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓":null}/>
-              :<div style={{width:44,height:62,borderRadius:8,border:"2px dashed rgba(255,255,255,.15)"}}/>
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Draw":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)",background:"rgba(0,0,0,.05)"}}/>
             }
+            <div style={{fontSize:9,color:"rgba(0,0,0,.5)",marginTop:3,fontWeight:600}}>Discard</div>
           </div>
         </div>
 
-        {/* Step dots */}
+        {/* Step indicator when my turn */}
         {isMyTurn&&(
-          <div style={{display:"flex",gap:6,alignItems:"center",background:"rgba(0,0,0,.3)",borderRadius:16,padding:"4px 12px"}}>
-            {[["Src",stepsDone[0]],["Drop",stepsDone[1]],["Swap",stepsDone[2]]].map(([lbl,done],i)=>(
+          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.15)",borderRadius:20,padding:"4px 14px"}}>
+            {[["Pick",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([lbl,done],i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#22c55e":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":T.gmuted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                <span style={{fontSize:9,color:done?"#86efac":T.gmuted,fontWeight:done?700:400}}>{lbl}</span>
-                {i<2&&<span style={{color:"rgba(255,255,255,.2)",fontSize:8}}>›</span>}
+                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#16a34a":"rgba(0,0,0,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":"rgba(0,0,0,.5)",fontWeight:700}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:9,color:done?"#15803d":"rgba(0,0,0,.5)",fontWeight:done?700:500}}>{lbl}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.25)",fontSize:9}}>›</span>}
               </div>
             ))}
           </div>
         )}
-
-        {/* Status */}
-        <div style={{fontSize:11,color:isMyTurn?"#facc15":T.gmuted,fontWeight:isMyTurn?700:400,textAlign:"center"}}>
-          {isMyTurn?msg:`⏳ ${currentPlayer}'s turn`}
-        </div>
+        {!isMyTurn&&(
+          <div style={{background:"rgba(0,0,0,.15)",borderRadius:20,padding:"4px 14px"}}>
+            <span style={{fontSize:11,color:"rgba(0,0,0,.6)",fontStyle:"italic"}}>⏳ {currentPlayer}'s turn...</span>
+          </div>
+        )}
       </div>
 
-      {/* ── Bottom/Right: My hand ── */}
-      <div className="game-hand" style={{background:"rgba(0,0,0,.4)",borderTop:"1px solid rgba(255,255,255,.08)",display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontWeight:800,fontSize:12,color:T.gink}}>You</span>
-            <span style={{fontSize:10,fontFamily:T.mono,background:"rgba(255,255,255,.1)",borderRadius:5,padding:"1px 6px",color:"#86efac"}}>{handTotal(myHand,wildCard)}pt</span>
-          </div>
-          {isMyTurn?(
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={doSwap} disabled={!readySwap}
-                style={{padding:"6px 12px",borderRadius:8,border:"none",cursor:readySwap?"pointer":"not-allowed",
-                  background:readySwap?"#22c55e":"rgba(255,255,255,.1)",color:readySwap?"#fff":T.gmuted,
-                  fontSize:11,fontWeight:700,fontFamily:T.font,opacity:readySwap?1:.5,
-                  boxShadow:readySwap?"0 0 12px rgba(34,197,94,.5)":"none",transition:"all .2s"}}>
-                ⇄ SWAP
-              </button>
-              <button onClick={doShow}
-                style={{padding:"6px 12px",borderRadius:8,border:"none",cursor:"pointer",
-                  background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,fontFamily:T.font,
-                  boxShadow:"0 0 12px rgba(239,68,68,.4)"}}>
-                📢 SHOW
-              </button>
-            </div>
-          ):(
-            <span style={{fontSize:10,color:T.gmuted,fontStyle:"italic"}}>Waiting...</span>
-          )}
-        </div>
-        <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:8}}>
+      {/* ── BOTTOM BAR: My hand + controls ── */}
+      <div style={{display:"flex",flexDirection:"column",background:"#111",borderRadius:"28px 28px 0 0",padding:"10px 12px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,.4)"}}>
+        {/* My cards row */}
+        <div style={{display:"flex",gap:6,justifyContent:"center",overflowX:"auto",paddingBottom:10,paddingTop:6}}>
           {myHand.map((card,idx)=>(
-            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
+            <Card key={card.id} card={card}
+              selected={dropIdxs.includes(idx)}
+              onClick={isMyTurn?()=>toggleDrop(idx):undefined}
+              badge={dropIdxs.includes(idx)?"Drop":null}/>
           ))}
+        </div>
+
+        {/* Avatar + name + points + action buttons */}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {/* My avatar */}
+          <div style={{width:44,height:44,borderRadius:"50%",background:avatarColor(myName),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:"#fff",border:"2px solid #333",flexShrink:0}}>
+            {initials(myName)}
+          </div>
+          {/* Name + pts */}
+          <div style={{flex:1}}>
+            <div style={{color:"#fff",fontWeight:700,fontSize:14}}>You</div>
+            <div style={{display:"flex",gap:3}}>{myHand.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.35)"}}/>)}</div>
+          </div>
+          {/* Points badge */}
+          <div style={{background:"rgba(255,255,255,.1)",borderRadius:12,padding:"4px 10px",marginRight:4}}>
+            <span style={{color:"#86efac",fontWeight:700,fontSize:13,fontFamily:T.mono}}>{handTotal(myHand,wildCard)}pt</span>
+          </div>
+          {/* Circular buttons */}
+          <button className="circ-btn" onClick={()=>setShowRules(true)} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff"}}>RULES</button>
+          <button className="circ-btn" onClick={()=>setShowHistory(true)} style={{background:"linear-gradient(135deg,#0284c7,#0369a1)",color:"#fff"}}>📜</button>
+          {isMyTurn?(
+            <>
+              <button className="circ-btn" onClick={doSwap} disabled={!readySwap}
+                style={{background:readySwap?"linear-gradient(135deg,#16a34a,#15803d)":"rgba(255,255,255,.1)",color:readySwap?"#fff":"#555",fontSize:9,opacity:readySwap?1:.6}}>SWAP</button>
+              <button className="circ-btn" onClick={doShow} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>SHOW</button>
+            </>
+          ):(
+            <button className="circ-btn" onClick={onQuit} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>Exit</button>
+          )}
         </div>
       </div>
 
@@ -1320,6 +1398,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     </div>
   );
 }
+
+
 
 
 
@@ -1499,138 +1579,154 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   if(showContinueAI)return <ContinuePopup onContinue={onContinueAI} onSkip={onSkipAI}/>;
   if(newlyElim.length>0)return <EliminatedBanner name={newlyElim[0]} onClose={()=>{const nr=round+1;setNewlyElim([]);setRound(nr);deal(active.filter(n=>!eliminated.includes(n)),nr);}}/>;
 
-  const stepsDone=[drawFrom!=null,dropIdxs.length>0,readySwap];
-  const opponents=active.filter(n=>n!==YOU);
+  // Avatar helpers
+  const initials = n => n.slice(0,2).toUpperCase();
+  const avatarColor = n => {
+    const colors=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626"];
+    let h=0;for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);
+    return colors[Math.abs(h)%colors.length];
+  };
 
   return(
-    <div className="game-wrap" style={{fontFamily:T.font}}>
+    <div className="board" style={{fontFamily:T.font}}>
       <style>{GS.base}</style>
 
-      {/* Header */}
-      <div className="game-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(0,0,0,.4)",zIndex:10,flexShrink:0}}>
-        <div style={{display:"flex",flexDirection:"column",gap:2}}>
-          <span style={{fontWeight:900,fontSize:13,color:T.gink,letterSpacing:-.3}}>5 CARDS</span>
-          <span style={{fontSize:9,color:T.gmuted,background:"rgba(255,255,255,.08)",borderRadius:8,padding:"1px 5px",textAlign:"center"}}>R{round} 🤖</span>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",justifyContent:"center"}}>
-          {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <button onClick={()=>setShowHistory(true)} style={{background:"none",border:"none",color:T.gmuted,fontSize:14,cursor:"pointer",padding:"2px 4px"}}>📜</button>
-          <button onClick={()=>setShowRules(true)} style={{background:"none",border:"none",color:T.gmuted,fontSize:11,cursor:"pointer",padding:"2px 4px",fontFamily:T.font,fontWeight:700}}>Rules</button>
-          <button onClick={onQuit} style={{background:"rgba(239,68,68,.2)",border:"1px solid rgba(239,68,68,.4)",color:"#fca5a5",fontSize:10,borderRadius:6,cursor:"pointer",padding:"3px 7px",fontFamily:T.font,fontWeight:700}}>Exit</button>
-        </div>
-      </div>
+      {/* ── TOP: Opponents + table ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:"8px 12px 4px",position:"relative"}}>
 
-      {/* Left: scores + opponents */}
-      <div className="game-left">
-        {allPlayers.map(name=>{
-          const sc=scores[name]||0;
-          const pct=Math.min(100,(sc/scoreLimit)*100);
-          const isCur=active[turnIdx]===name;
-          const isElim=eliminated.includes(name);
-          const isMe=name===YOU;
-          return(
-            <div key={name} style={{background:isCur?"rgba(250,204,21,.15)":"rgba(0,0,0,.25)",borderRadius:8,padding:"5px 7px",
-              border:isCur?"1px solid rgba(250,204,21,.5)":"1px solid rgba(255,255,255,.07)",opacity:isElim?.4:1,flexShrink:0}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                <span style={{fontSize:10,fontWeight:700,color:isCur?"#facc15":isMe?T.gink:T.gmuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:60}}>
-                  {isElim?"💀":isCur?"▶":""}{isMe?"You":name}
-                </span>
-                <span style={{fontSize:10,fontFamily:T.mono,color:pct>80?"#f87171":"#86efac"}}>{sc}</span>
+        {/* Score chips top-left */}
+        <div style={{position:"absolute",top:8,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
+          {allPlayers.map(name=>{
+            const sc=scores[name]||0;
+            const pct=Math.min(100,(sc/scoreLimit)*100);
+            const isMe=name===YOU;
+            const isCur=active[turnIdx]===name;
+            const isElim=eliminated.includes(name);
+            return(
+              <div key={name} style={{background:isCur?"rgba(0,0,0,.8)":"rgba(0,0,0,.55)",borderRadius:20,padding:"3px 10px 3px 6px",display:"flex",alignItems:"center",gap:5,border:isCur?"1.5px solid #facc15":"1.5px solid transparent",opacity:isElim?.4:1}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:avatarColor(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff",fontWeight:900}}>{initials(name)}</div>
+                <span style={{fontSize:10,color:"#fff",fontWeight:700}}>{isElim?"💀":""}{isMe?"You":name}</span>
+                <span style={{fontSize:10,color:pct>70?"#f87171":"#86efac",fontWeight:700,fontFamily:T.mono}}>{sc}</span>
               </div>
-              <div style={{height:3,background:"rgba(255,255,255,.1)",borderRadius:2}}>
-                <div style={{height:"100%",width:`${pct}%`,background:pct>80?"#ef4444":pct>55?"#f59e0b":"#22c55e",borderRadius:2}}/>
-              </div>
-            </div>
-          );
-        })}
-        {opponents.map(name=>{
-          const h=hands[name]||[];
-          const isCur=currentPlayer===name;
-          return(
-            <div key={name} style={{background:isCur?"rgba(250,204,21,.1)":"rgba(0,0,0,.2)",borderRadius:10,padding:"6px",textAlign:"center",
-              border:isCur?"1px solid rgba(250,204,21,.4)":"1px solid rgba(255,255,255,.07)",flexShrink:0}}>
-              <div style={{fontSize:10,fontWeight:700,color:isCur?"#facc15":T.gmuted,marginBottom:4}}>🤖{name}{isCur?" ⏳":""}</div>
-              <FanCards count={h.length||5}/>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      {/* Centre: table */}
-      <div className="game-center">
-        {wildCard&&(
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,fontWeight:700,color:"#fbbf24",letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>🌟 Wild · 0pts</div>
-            <Card card={wildCard} small/>
+        {/* Timer top-right */}
+        {isMyTurn&&(
+          <div style={{position:"absolute",top:8,right:8,zIndex:5}}>
+            <TimerRing timeLeft={timeLeft}/>
           </div>
         )}
-        <div style={{display:"flex",gap:16,alignItems:"flex-end",justifyContent:"center"}}>
+
+        {/* Opponents */}
+        <div style={{display:"flex",gap:20,justifyContent:"center",flexWrap:"wrap"}}>
+          {opponents.map(name=>{
+            const h=hands[name]||[];
+            const isCur=currentPlayer===name;
+            return(
+              <div key={name} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <FanCards count={h.length||5}/>
+                <div className="opp-pill" style={{border:isCur?"2px solid #facc15":"2px solid transparent"}}>
+                  <div className="avatar" style={{background:avatarColor(name)}}>
+                    <span style={{fontSize:14,fontWeight:900,color:"#fff"}}>{initials(name)}</span>
+                  </div>
+                  <span style={{fontWeight:700,fontSize:13}}>{name}</span>
+                  {isCur&&<span className="play-badge">PLAY</span>}
+                  <div className="card-dots">{h.map((_,i)=><span key={i}/>)}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Centre: Wild + Stock + Discard */}
+        <div style={{display:"flex",alignItems:"center",gap:16,justifyContent:"center"}}>
+          {wildCard&&(
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,.5)",letterSpacing:.5,textTransform:"uppercase",marginBottom:3}}>Wild</div>
+              <Card card={wildCard} small/>
+            </div>
+          )}
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,color:T.gmuted,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
             {stock.length>0
-              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓":null}/>
-              :<div style={{width:44,height:62,borderRadius:8,border:"2px dashed rgba(255,255,255,.15)"}}/>
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Draw":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)",background:"rgba(0,0,0,.05)"}}/>
             }
+            <div style={{fontSize:9,color:"rgba(0,0,0,.5)",marginTop:3,fontWeight:600}}>{stock.length} left</div>
           </div>
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,color:T.gmuted,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
             {pileTop
-              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓":null}/>
-              :<div style={{width:44,height:62,borderRadius:8,border:"2px dashed rgba(255,255,255,.15)"}}/>
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Draw":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)",background:"rgba(0,0,0,.05)"}}/>
             }
+            <div style={{fontSize:9,color:"rgba(0,0,0,.5)",marginTop:3,fontWeight:600}}>Discard</div>
           </div>
         </div>
-        {isMyTurn&&(
-          <div style={{display:"flex",gap:6,alignItems:"center",background:"rgba(0,0,0,.3)",borderRadius:16,padding:"4px 12px"}}>
-            {[["Src",stepsDone[0]],["Drop",stepsDone[1]],["Swap",stepsDone[2]]].map(([lbl,done],i)=>(
+
+        {/* Step indicator */}
+        {isMyTurn?(
+          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.15)",borderRadius:20,padding:"4px 14px"}}>
+            {[["Pick",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([lbl,done],i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#22c55e":"rgba(255,255,255,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":T.gmuted,fontWeight:700}}>{done?"✓":i+1}</div>
-                <span style={{fontSize:9,color:done?"#86efac":T.gmuted}}>{lbl}</span>
-                {i<2&&<span style={{color:"rgba(255,255,255,.2)",fontSize:8}}>›</span>}
+                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#16a34a":"rgba(0,0,0,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":"rgba(0,0,0,.5)",fontWeight:700}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:9,color:done?"#15803d":"rgba(0,0,0,.5)",fontWeight:done?700:500}}>{lbl}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.25)",fontSize:9}}>›</span>}
               </div>
             ))}
           </div>
+        ):(
+          <div style={{background:"rgba(0,0,0,.15)",borderRadius:20,padding:"4px 14px"}}>
+            <span style={{fontSize:11,color:"rgba(0,0,0,.6)",fontStyle:"italic"}}>
+              {isAI(currentPlayer)?`🤖 ${currentPlayer} thinking...`:`⏳ ${currentPlayer}'s turn`}
+            </span>
+          </div>
         )}
-        <div style={{fontSize:11,color:isMyTurn?"#facc15":T.gmuted,fontWeight:isMyTurn?700:400,textAlign:"center"}}>{msg}</div>
       </div>
 
-      {/* Hand */}
-      <div className="game-hand" style={{background:"rgba(0,0,0,.4)",borderTop:"1px solid rgba(255,255,255,.08)",display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontWeight:800,fontSize:12,color:T.gink}}>You</span>
-            <span style={{fontSize:10,fontFamily:T.mono,background:"rgba(255,255,255,.1)",borderRadius:5,padding:"1px 6px",color:"#86efac"}}>{handTotal(myHand,wildCard)}pt</span>
-          </div>
-          {isMyTurn?(
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={doSwap} disabled={!readySwap}
-                style={{padding:"6px 12px",borderRadius:8,border:"none",cursor:readySwap?"pointer":"not-allowed",
-                  background:readySwap?"#22c55e":"rgba(255,255,255,.1)",color:readySwap?"#fff":T.gmuted,
-                  fontSize:11,fontWeight:700,fontFamily:T.font,boxShadow:readySwap?"0 0 12px rgba(34,197,94,.5)":"none"}}>
-                ⇄ SWAP
-              </button>
-              <button onClick={doShow}
-                style={{padding:"6px 12px",borderRadius:8,border:"none",cursor:"pointer",
-                  background:"#ef4444",color:"#fff",fontSize:11,fontWeight:700,fontFamily:T.font,
-                  boxShadow:"0 0 12px rgba(239,68,68,.4)"}}>
-                📢 SHOW
-              </button>
-            </div>
-          ):(
-            <span style={{fontSize:10,color:T.gmuted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} thinking...`:"Waiting..."}</span>
-          )}
-        </div>
-        <div style={{display:"flex",gap:5,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:8}}>
+      {/* ── BOTTOM BAR ── */}
+      <div style={{display:"flex",flexDirection:"column",background:"#111",borderRadius:"28px 28px 0 0",padding:"10px 12px 16px",boxShadow:"0 -4px 20px rgba(0,0,0,.4)"}}>
+        {/* Cards */}
+        <div style={{display:"flex",gap:6,justifyContent:"center",overflowX:"auto",paddingBottom:10,paddingTop:6}}>
           {myHand.map((card,idx)=>(
-            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
+            <Card key={card.id} card={card}
+              selected={dropIdxs.includes(idx)}
+              onClick={isMyTurn?()=>toggleDrop(idx):undefined}
+              badge={dropIdxs.includes(idx)?"Drop":null}/>
           ))}
         </div>
+        {/* Controls row */}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:44,height:44,borderRadius:"50%",background:avatarColor(YOU),display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:"#fff",border:"2px solid #333",flexShrink:0}}>
+            {initials(YOU)}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{color:"#fff",fontWeight:700,fontSize:14}}>You</div>
+            <div style={{display:"flex",gap:3}}>{myHand.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.35)"}}/>)}</div>
+          </div>
+          <div style={{background:"rgba(255,255,255,.1)",borderRadius:12,padding:"4px 10px",marginRight:4}}>
+            <span style={{color:"#86efac",fontWeight:700,fontSize:13,fontFamily:T.mono}}>{handTotal(myHand,wildCard)}pt</span>
+          </div>
+          <button className="circ-btn" onClick={()=>setShowRules(true)} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff"}}>RULES</button>
+          <button className="circ-btn" onClick={()=>setShowHistory(true)} style={{background:"linear-gradient(135deg,#0284c7,#0369a1)",color:"#fff"}}>📜</button>
+          {isMyTurn?(
+            <>
+              <button className="circ-btn" onClick={doSwap} disabled={!readySwap}
+                style={{background:readySwap?"linear-gradient(135deg,#16a34a,#15803d)":"rgba(255,255,255,.1)",color:readySwap?"#fff":"#555",fontSize:9,opacity:readySwap?1:.6}}>SWAP</button>
+              <button className="circ-btn" onClick={doShow} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>SHOW</button>
+            </>
+          ):(
+            <button className="circ-btn" onClick={onQuit} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>Exit</button>
+          )}
+        </div>
       </div>
+
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
     </div>
   );
 }
+
 export default function App(){
   const [screen,setScreen]=useState("home");
   const [config,setConfig]=useState({players:["You","Muthu"],limit:300,penalty:50,roomCode:null,myName:null});
