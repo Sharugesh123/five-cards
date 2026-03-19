@@ -1,7 +1,7 @@
 {
   "short_name": "5 Cards",
   "name": "5 Cards - Swap · Claim · Survive",
-  "description": "A multiplayer card game",
+  "description": "A fun multiplayer card game",
   "icons": [
     {
       "src": "icon-192.png",
@@ -17,12 +17,9 @@
     }
   ],
   "start_url": ".",
-  "display": "fullscreen",
-  "orientation": "any",
-  "theme_color": "#0d2818",
-  "background_color": "#0d2818",
-  "categories": [
-    "games",
-    "entertainment"
-  ]
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#2563EB",
+  "background_color": "#F4F5F7",
+  "categories": ["games", "entertainment"]
 }
