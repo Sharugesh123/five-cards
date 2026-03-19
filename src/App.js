@@ -1573,6 +1573,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
   const readySwap=isMyTurn&&drawFrom!==null&&dropIdxs.length>0;
+  const opponents=active.filter(n=>n!==YOU);
 
   if(gameWinner)return <GameOverBanner winner={gameWinner} onPlayAgain={()=>{setGameWinner(null);onQuit();}} onQuit={onQuit}/>;
   if(roundResult)return <RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true} history={history}/>;
