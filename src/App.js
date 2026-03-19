@@ -1,5 +1,26 @@
 /* eslint-disable */
 import { useState, useEffect, useRef } from "react";
+import React from "react";
+
+// ── Error Boundary ─────────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={error:null,info:null};}
+  static getDerivedStateFromError(e){return{error:e};}
+  componentDidCatch(e,i){this.setState({info:i});}
+  render(){
+    if(this.state.error){
+      return(
+        <div style={{padding:24,fontFamily:"monospace",background:"#fff",minHeight:"100vh"}}>
+          <h2 style={{color:"red",marginBottom:12}}>⚠️ App Crashed</h2>
+          <pre style={{whiteSpace:"pre-wrap",fontSize:12,color:"#333",marginBottom:8}}>{String(this.state.error)}</pre>
+          <pre style={{whiteSpace:"pre-wrap",fontSize:11,color:"#999"}}>{this.state.info?.componentStack}</pre>
+          <button onClick={()=>window.location.reload()} style={{marginTop:16,padding:"8px 20px",background:"#2563EB",color:"#fff",border:"none",borderRadius:8,cursor:"pointer"}}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ── Firebase REST API (rules now set to public) ────────────────────────────────
 const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
@@ -1545,13 +1566,11 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     </div>
   );
 }
-
-// ── App Root ───────────────────────────────────────────────────────────────────
 export default function App(){
   const [screen,setScreen]=useState("home");
   const [config,setConfig]=useState({players:["You","Muthu"],limit:300,penalty:50,roomCode:null,myName:null});
   return(
-    <>
+    <ErrorBoundary>
       <Styles/>
       {screen==="home"&&(
         <HomeScreen
@@ -1572,6 +1591,6 @@ export default function App(){
       {screen==="ai"&&(
         <AIGameScreen players={config.players} scoreLimit={config.limit} penaltyPoints={config.penalty||50} onQuit={()=>setScreen("home")}/>
       )}
-    </>
+    </ErrorBoundary>
   );
 }
