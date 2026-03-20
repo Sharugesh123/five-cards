@@ -24,6 +24,69 @@ const BASE_CSS=`
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
+
+  /* ── Landscape game wrapper ── */
+  /* On portrait phones: rotate the game 90° so it fills landscape */
+  .game-ls{
+    position:fixed;
+    background:#E8B800;
+    /* Yellow checkered pattern like reference */
+    background-image:
+      radial-gradient(circle,rgba(0,0,0,.08) 1px,transparent 1px),
+      radial-gradient(circle,rgba(0,0,0,.04) 1px,transparent 1px);
+    background-size:28px 28px, 14px 14px;
+    background-position:0 0, 7px 7px;
+    display:flex;flex-direction:column;
+    font-family:'DM Sans',system-ui,sans-serif;
+  }
+  /* Portrait phone: rotate 90° to fill screen as landscape */
+  @media screen and (orientation:portrait){
+    .game-ls{
+      top:0; left:0;
+      width:100vh; height:100vw;
+      transform-origin:top left;
+      transform:rotate(90deg) translateY(-100%);
+    }
+  }
+  /* Already landscape: just fill screen */
+  @media screen and (orientation:landscape){
+    .game-ls{
+      inset:0;
+      width:100%; height:100%;
+    }
+  }
+
+  /* Opponent pill */
+  .opp-pill{
+    background:#111;color:#fff;
+    border-radius:40px;padding:6px 16px 6px 8px;
+    display:inline-flex;align-items:center;gap:8px;
+    box-shadow:0 4px 14px rgba(0,0,0,.4);
+    position:relative;
+  }
+  .play-badge{
+    position:absolute;top:-7px;right:-4px;
+    background:linear-gradient(135deg,#c026d3,#7c3aed);
+    color:#fff;font-size:8px;font-weight:900;letter-spacing:.5px;
+    border-radius:8px;padding:2px 6px;
+  }
+  /* Bottom bar */
+  .btm-bar{
+    background:#111;
+    border-radius:36px 36px 0 0;
+    padding:10px 14px 12px;
+    display:flex;align-items:center;
+    gap:8px;flex-shrink:0;
+    box-shadow:0 -4px 20px rgba(0,0,0,.3);
+  }
+  /* Circular button */
+  .circ{
+    width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,.2);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:10px;font-weight:900;letter-spacing:.3px;
+    flex-shrink:0;font-family:'DM Sans',system-ui,sans-serif;
+    box-shadow:0 2px 8px rgba(0,0,0,.3);
+  }
 `;
 
 // ── Game constants ────────────────────────────────────────────────────────────
@@ -391,99 +454,76 @@ function HomeScreen({onPlayAI,onPlayFriends}){
   const handlePen=e=>{const v=e.target.value.replace(/\D/g,"");setPenInput(v);const n=+v;if(n>=1&&n<=9999)setPenalty(n);};
 
   return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px",overflowX:"hidden"}}>
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20,position:"relative",overflow:"hidden"}}>
       <style>{BASE_CSS}</style>
+      <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 1px 1px,rgba(37,99,235,.07) 1px,transparent 0)",backgroundSize:"32px 32px",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",top:-120,right:-80,width:320,height:320,borderRadius:"50%",background:"radial-gradient(circle,rgba(37,99,235,.12),transparent 70%)",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",bottom:-80,left:-60,width:240,height:240,borderRadius:"50%",background:"radial-gradient(circle,rgba(16,185,129,.1),transparent 70%)",pointerEvents:"none"}}/>
 
-      {/* Hero */}
-      <div style={{textAlign:"center",padding:"48px 0 32px"}}>
-        <div style={{fontSize:56,marginBottom:8,animation:"pop .5s both"}}>🃏</div>
-        <h1 style={{fontWeight:900,fontSize:38,color:T.ink,margin:0,letterSpacing:-2,lineHeight:1}}>5 CARDS</h1>
-        <p style={{fontSize:11,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"8px 0 0"}}>Swap · Claim · Survive</p>
-      </div>
+      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:400}}>
+        {/* Logo */}
+        <div style={{textAlign:"center",marginBottom:28,animation:"fadeUp .5s both"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <span style={{fontSize:36}}>🃏</span>
+            <span style={{fontWeight:900,fontSize:40,letterSpacing:-2,color:T.ink}}>5 CARDS</span>
+          </div>
+          <div style={{fontSize:12,color:T.muted,letterSpacing:3,textTransform:"uppercase"}}>Swap · Claim · Survive</div>
+        </div>
 
-      <div style={{width:"100%",maxWidth:380}}>
-
-        {/* Settings — no box, just two inline fields */}
-        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>⚙️ Game Settings</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:28}}>
-          {/* Elim score */}
-          <div>
-            <p style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5}}>💀 Elim score</p>
-            <input type="text" inputMode="numeric" value={limInput} onChange={handleLim}
-              style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid rgba(0,0,0,.1)`,fontSize:20,fontWeight:800,color:T.ink,textAlign:"center",outline:"none",background:"#fff",fontFamily:T.mono,boxSizing:"border-box",boxShadow:"0 2px 8px rgba(0,0,0,.06)",marginBottom:6}}/>
-            <div style={{display:"flex",gap:4}}>
-              {[100,200,300].map(v=>(
-                <button key={v} onClick={()=>{setLimit(v);setLimInput(String(v));}}
-                  style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
-                    background:limit===v?T.accent:"rgba(0,0,0,.06)",color:limit===v?"#fff":T.muted,transition:"background .15s"}}>
-                  {v}
-                </button>
-              ))}
+        {/* ── Settings ── */}
+        <Panel style={{padding:"18px 20px",marginBottom:12,animation:"fadeUp .5s .05s both"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>⚙️ Game Settings</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {/* Elimination score */}
+            <div>
+              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>💀 Elim Score</div>
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+                <input type="text" inputMode="numeric" value={limInput} onChange={handleLim} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid rgba(0,0,0,.1)",fontSize:18,fontWeight:700,color:T.ink,textAlign:"center",outline:"none",background:"rgba(0,0,0,.03)",fontFamily:T.mono,width:"100%"}}/>
+                <span style={{fontSize:11,color:T.muted,whiteSpace:"nowrap"}}>pts</span>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                {[100,200,300].map(v=><button key={v} onClick={()=>{setLimit(v);setLimInput(String(v));}} style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:limit===v?T.accent:"rgba(0,0,0,.06)",color:limit===v?"#fff":T.muted,transition:"all .15s"}}>{v}</button>)}
+              </div>
+            </div>
+            {/* Penalty */}
+            <div>
+              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>⚠️ Wrong Show</div>
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+                <input type="text" inputMode="numeric" value={penInput} onChange={handlePen} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid rgba(0,0,0,.1)",fontSize:18,fontWeight:700,color:T.ink,textAlign:"center",outline:"none",background:"rgba(0,0,0,.03)",fontFamily:T.mono,width:"100%"}}/>
+                <span style={{fontSize:11,color:T.muted,whiteSpace:"nowrap"}}>pts</span>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                {[20,50,100].map(v=><button key={v} onClick={()=>{setPenalty(v);setPenInput(String(v));}} style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:penalty===v?T.red:"rgba(0,0,0,.06)",color:penalty===v?"#fff":T.muted,transition:"all .15s"}}>{v}</button>)}
+              </div>
             </div>
           </div>
-          {/* Penalty */}
-          <div>
-            <p style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5}}>⚠️ Wrong show</p>
-            <input type="text" inputMode="numeric" value={penInput} onChange={handlePen}
-              style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid rgba(0,0,0,.1)`,fontSize:20,fontWeight:800,color:T.ink,textAlign:"center",outline:"none",background:"#fff",fontFamily:T.mono,boxSizing:"border-box",boxShadow:"0 2px 8px rgba(0,0,0,.06)",marginBottom:6}}/>
-            <div style={{display:"flex",gap:4}}>
-              {[20,50,100].map(v=>(
-                <button key={v} onClick={()=>{setPenalty(v);setPenInput(String(v));}}
-                  style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
-                    background:penalty===v?T.red:"rgba(0,0,0,.06)",color:penalty===v?"#fff":T.muted,transition:"background .15s"}}>
-                  {v}
-                </button>
-              ))}
-            </div>
+        </Panel>
+
+        {/* ── VS AI — 2 to 6 players ── */}
+        <Panel style={{padding:"18px 20px",marginBottom:12,animation:"fadeUp .5s .1s both"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>🤖 Play vs AI</div>
+          <div style={{fontSize:11,color:T.muted,marginBottom:10}}>Total players (you + AI opponents)</div>
+          <div style={{display:"flex",gap:6,marginBottom:10,justifyContent:"center"}}>
+            {[2,3,4,5,6].map(n=>(
+              <button key={n} onClick={()=>setPlayers(n)} style={{width:44,height:44,borderRadius:10,border:"none",cursor:"pointer",fontSize:16,fontWeight:900,background:players===n?T.accent:"rgba(0,0,0,.06)",color:players===n?"#fff":T.ink,transform:players===n?"scale(1.1)":"scale(1)",transition:"all .15s"}}>{n}</button>
+            ))}
           </div>
+          <div style={{fontSize:11,color:T.muted,textAlign:"center",marginBottom:12}}>
+            You + {players-1} AI: <span style={{fontWeight:700,color:T.ink}}>{AI_NAMES.slice(0,players-1).join(", ")}</span>
+          </div>
+          <Btn onClick={()=>onPlayAI(players,limit,penalty)} style={{width:"100%",justifyContent:"center"}}>▶ Play Online</Btn>
+        </Panel>
+
+        {/* ── Friends ── */}
+        <Panel style={{padding:"18px 20px",marginBottom:12,animation:"fadeUp .5s .15s both"}}>
+          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>👫 Play with Friends</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Real online multiplayer · any device 🌐</div>
+          <Btn variant="green" onClick={()=>onPlayFriends(limit,penalty)} style={{width:"100%"}}>🌐 Create / Join Room</Btn>
+        </Panel>
+
+        <div style={{textAlign:"center",animation:"fadeUp .5s .2s both"}}>
+          <button onClick={()=>setRules(true)} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font}}>📋 View Rules</button>
         </div>
-
-        {/* Divider */}
-        <div style={{height:1,background:"rgba(0,0,0,.07)",marginBottom:24}}/>
-
-        {/* VS AI */}
-        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>🤖 Play vs AI</p>
-        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:10}}>
-          {[2,3,4,5,6].map(n=>(
-            <button key={n} onClick={()=>setPlayers(n)}
-              style={{width:46,height:46,borderRadius:12,border:"none",cursor:"pointer",fontSize:17,fontWeight:900,
-                background:players===n?T.accent:"#fff",color:players===n?"#fff":T.ink,
-                boxShadow:players===n?"0 4px 12px rgba(37,99,235,.4)":"0 2px 6px rgba(0,0,0,.08)",
-                transform:players===n?"scale(1.12)":"scale(1)",transition:"all .15s"}}>
-              {n}
-            </button>
-          ))}
-        </div>
-        <p style={{fontSize:11,color:T.muted,textAlign:"center",marginBottom:14}}>
-          {AI_NAMES.slice(0,players-1).join(" · ")}
-        </p>
-        <button onClick={()=>onPlayAI(players,limit,penalty)}
-          style={{width:"100%",padding:"15px",borderRadius:14,border:"none",cursor:"pointer",
-            background:T.accent,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,
-            boxShadow:"0 6px 20px rgba(37,99,235,.35)",marginBottom:28,letterSpacing:.2}}>
-          ▶ Start vs AI
-        </button>
-
-        {/* Divider */}
-        <div style={{height:1,background:"rgba(0,0,0,.07)",marginBottom:24}}/>
-
-        {/* Friends */}
-        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>👫 Play with Friends</p>
-        <button onClick={()=>onPlayFriends(limit,penalty)}
-          style={{width:"100%",padding:"15px",borderRadius:14,border:"none",cursor:"pointer",
-            background:T.green,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,
-            boxShadow:"0 6px 20px rgba(16,185,129,.35)",marginBottom:28,letterSpacing:.2}}>
-          🌐 Create / Join Room
-        </button>
-
-        {/* Rules */}
-        <div style={{textAlign:"center"}}>
-          <button onClick={()=>setRules(true)}
-            style={{background:"none",border:"none",color:T.muted,fontSize:12,cursor:"pointer",fontFamily:T.font,padding:"4px 12px"}}>
-            📋 View Rules
-          </button>
-        </div>
-
       </div>
       {rules&&<RulesModal onClose={()=>setRules(false)} limit={limit} penalty={penalty}/>}
     </div>
@@ -747,89 +787,124 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   if(newlyElim.length>0)return<EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
   if(showGate&&isMyTurn)return<TurnGate playerName={myName} onReady={()=>{vibrate([100,50,100]);setShowGate(false);startTimer();}}/>;
   const opponents=activePlayers.filter(n=>n!==myName);
+  const av=n=>{const colors=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626"];let h=0;for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);return colors[Math.abs(h)%colors.length];};
+  const ini=n=>n.slice(0,2).toUpperCase();
 
   return(
-    <div style={{minHeight:"100vh",maxWidth:480,margin:"0 auto",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",position:"relative"}}>
+    <div className="game-ls">
       <style>{BASE_CSS}</style>
-      {/* Header */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontWeight:900,fontSize:15,letterSpacing:-.3}}>5 CARDS</span>
-          <span style={{fontSize:10,color:T.muted,background:"rgba(0,0,0,.06)",borderRadius:20,padding:"2px 7px"}}>R{round} · 🌐</span>
-        </div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
-          <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
-          <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
-        </div>
-      </div>
-      {/* Score bar */}
-      <div style={{padding:"6px 10px",display:"flex",gap:5,overflowX:"auto"}}>
-        {activePlayers.map(n=><ScoreChip key={n} name={n} score={scores?.[n]||0} limit={sl} isActive={currentPlayer===n} isElim={(eliminated||[]).includes(n)} isYou={n===myName}/>)}
-      </div>
-      {/* Opponents */}
-      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"6px 10px",flexWrap:"wrap"}}>
-        {opponents.map(name=>{
-          const h=hands?.[name]||[],isCur=currentPlayer===name;
-          return(
-            <div key={name} style={{background:isCur?"rgba(37,99,235,.08)":T.surface,backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)",borderRadius:12,padding:"8px 10px",textAlign:"center",minWidth:80,boxShadow:T.shadow}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:6}}>
-                <span style={{fontSize:12}}>👤</span>
-                <span style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,maxWidth:58,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
+
+      {/* ── TOP AREA: scores + opponents + table ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-evenly",padding:"6px 12px",position:"relative",overflow:"hidden"}}>
+
+        {/* Score chips — top left */}
+        <div style={{position:"absolute",top:6,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
+          {activePlayers.map(n=>{
+            const sc=scores?.[n]||0,pct=Math.min(100,(sc/sl)*100),isCur=currentPlayer===n,isMe=n===myName,isElim=(eliminated||[]).includes(n);
+            return(
+              <div key={n} style={{display:"flex",alignItems:"center",gap:5,background:isCur?"rgba(0,0,0,.75)":"rgba(0,0,0,.5)",borderRadius:20,padding:"3px 9px 3px 5px",border:isCur?"1.5px solid #facc15":"1.5px solid transparent",opacity:isElim?.4:1}}>
+                <div style={{width:16,height:16,borderRadius:"50%",background:av(n),display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:900}}>{ini(n)}</div>
+                <span style={{fontSize:9,color:"#fff",fontWeight:700}}>{isElim?"💀":""}{isMe?"You":n}</span>
+                <span style={{fontSize:9,color:pct>70?"#f87171":"#86efac",fontFamily:T.mono,fontWeight:700}}>{sc}</span>
               </div>
-              <FanCards count={h.length||5}/>
+            );
+          })}
+        </div>
+
+        {/* Timer — top right */}
+        {isMyTurn&&<div style={{position:"absolute",top:6,right:8,zIndex:5}}><TimerRing timeLeft={timeLeft}/></div>}
+
+        {/* Opponents with fanned cards + pill */}
+        <div style={{display:"flex",gap:20,justifyContent:"center",alignItems:"flex-end",flexWrap:"wrap"}}>
+          {opponents.map(name=>{
+            const h=hands?.[name]||[],isCur=currentPlayer===name;
+            return(
+              <div key={name} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                <FanCards count={h.length||5}/>
+                <div className="opp-pill" style={{border:isCur?"2px solid #facc15":"2px solid transparent"}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:av(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff"}}>{ini(name)}</div>
+                  <span style={{fontWeight:700,fontSize:13}}>{name}</span>
+                  {isCur&&<span className="play-badge">PLAY</span>}
+                </div>
+                <div style={{display:"flex",gap:3}}>{h.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(0,0,0,.25)"}}/>)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Stock + Discard + Wild */}
+        <div style={{display:"flex",gap:20,alignItems:"flex-end",justifyContent:"center"}}>
+          {wildCard&&(
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,.5)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>Wild</div>
+              <Card card={wildCard} small/>
             </div>
-          );
-        })}
-      </div>
-      {/* Table — wild peeks from bottom */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"4px 12px",position:"relative",minHeight:200}}>
-        {wildCard&&(
-          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
-            <span style={{fontSize:13}}>🌟</span>
-            <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
-          </div>
-        )}
-        <div style={{display:"flex",gap:24,alignItems:"flex-end",justifyContent:"center"}}>
+          )}
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock?.length||0})</div>
-            {stock?.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Draw":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
+            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock?.length||0})</div>
+            {stock?.length>0
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
+            }
           </div>
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-            {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Draw":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
+            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
+            {pileTop
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
+            }
           </div>
         </div>
-        {isMyTurn&&(
-          <div style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"6px 14px"}}>
-            {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([label,done],i)=>(
+
+        {/* Step indicator + message */}
+        {isMyTurn?(
+          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
+            {[["Pick",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([lbl,done],i)=>(
               <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:18,height:18,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                <span style={{fontSize:10,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
-                {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:10}}>›</span>}
+                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#16a34a":"rgba(0,0,0,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":"rgba(0,0,0,.4)",fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:9,color:done?"#15803d":"rgba(0,0,0,.45)",fontWeight:done?700:500}}>{lbl}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.2)",fontSize:9}}>›</span>}
               </div>
             ))}
           </div>
-        )}
-        <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}</div>
-        {/* Wild card peek — horizontal, 30% visible */}
-        {wildCard&&<WildCardPeek card={wildCard}/>}
-      </div>
-      {/* My hand */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontWeight:800,fontSize:13}}>You</span>
-            <span style={{fontSize:11,fontFamily:T.mono,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.ink}}>{handTotal(myHand,wildCard)} pts</span>
+        ):(
+          <div style={{background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
+            <span style={{fontSize:10,color:"rgba(0,0,0,.5)",fontStyle:"italic"}}>⏳ {currentPlayer}'s turn...</span>
           </div>
-          {isMyTurn?<div style={{display:"flex",gap:7}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
-        </div>
-        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:14,paddingBottom:2}}>
-          {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>)}
-        </div>
+        )}
       </div>
+
+      {/* ── MY HAND above bottom bar ── */}
+      <div style={{display:"flex",gap:6,justifyContent:"center",padding:"4px 12px 0",overflowX:"auto",flexShrink:0}}>
+        {myHand.map((card,idx)=>(
+          <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
+        ))}
+      </div>
+
+      {/* ── BOTTOM BAR ── */}
+      <div className="btm-bar">
+        {/* My avatar */}
+        <div style={{width:42,height:42,borderRadius:"50%",background:av(myName),display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",border:"2px solid #333",flexShrink:0}}>
+          {ini(myName)}
+        </div>
+        {/* Name + card dots */}
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:"#fff",fontWeight:700,fontSize:13}}>You · <span style={{color:"#86efac",fontFamily:T.mono,fontSize:12}}>{handTotal(myHand,wildCard)}pt</span></div>
+          <div style={{display:"flex",gap:3,marginTop:3}}>{myHand.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.3)"}}/>)}</div>
+        </div>
+        {/* Action buttons */}
+        {isMyTurn?(
+          <>
+            <button className="circ" onClick={doSwap} disabled={!readySwap}
+              style={{background:readySwap?"linear-gradient(135deg,#16a34a,#15803d)":"rgba(255,255,255,.08)",color:readySwap?"#fff":"#555",opacity:readySwap?1:.5,fontSize:9}}>SWAP</button>
+            <button className="circ" onClick={doShow} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>SHOW</button>
+          </>
+        ):null}
+        <button className="circ" onClick={()=>setShowRules(true)} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",fontSize:9}}>RULES</button>
+        <button className="circ" onClick={()=>setShowHistory(true)} style={{background:"linear-gradient(135deg,#0284c7,#0369a1)",color:"#fff",fontSize:14}}>📜</button>
+        <button className="circ" onClick={onQuit} style={{background:"linear-gradient(135deg,#dc2626,#991b1b)",color:"#fff",fontSize:9}}>Exit</button>
+      </div>
+
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
     </div>
@@ -1032,106 +1107,132 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   if(roundResult)return<RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true} history={history}/>;
   if(newlyElim.length>0)return<EliminatedBanner name={newlyElim[0]} onClose={()=>{const nr=round+1;setNewlyElim([]);setRound(nr);deal(active.filter(n=>!eliminated.includes(n)),nr);}}/>;
 
+  const av=n=>{const colors=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626"];let h=0;for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);return colors[Math.abs(h)%colors.length];};
+  const ini=n=>n.slice(0,2).toUpperCase();
+  const opponents=active.filter(n=>n!==YOU);
+
   return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column"}}>
+    <div className="game-ls">
       <style>{BASE_CSS}</style>
-      {/* Header */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontWeight:900,fontSize:16,letterSpacing:-.3}}>5 CARDS</span>
-          <span style={{fontSize:11,color:T.muted,background:"rgba(0,0,0,.06)",borderRadius:20,padding:"2px 8px"}}>Round {round} · 🤖</span>
-        </div>
-        <div style={{display:"flex",gap:7,alignItems:"center"}}>
-          {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
-          <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
-          <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
-        </div>
-      </div>
-      {/* Score bar */}
-      <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
-        {allPlayers.map(n=><ScoreChip key={n} name={n} score={scores[n]||0} limit={scoreLimit} isActive={active[turnIdx]===n} isElim={eliminated.includes(n)} isYou={n===YOU}/>)}
-      </div>
-      {/* Main */}
-      <div style={{flex:1,display:"flex",flexDirection:"row",gap:12,padding:"8px 12px",minHeight:0}}>
-        {/* Opponents column */}
-        <div style={{display:"flex",flexDirection:"column",gap:8,width:118,flexShrink:0,overflowY:"auto"}}>
-          {active.filter(n=>n!==YOU).map(name=>{
-            const h=hands[name]||[],isCur=currentPlayer===name;
+
+      {/* ── TOP: scores + opponents + table ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-evenly",padding:"6px 12px",position:"relative",overflow:"hidden"}}>
+
+        {/* Score chips */}
+        <div style={{position:"absolute",top:6,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
+          {allPlayers.map(n=>{
+            const sc=scores[n]||0,pct=Math.min(100,(sc/scoreLimit)*100),isCur=active[turnIdx]===n,isElim=eliminated.includes(n);
             return(
-              <Panel key={name} style={{padding:"10px",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
-                  <span style={{fontSize:12}}>🤖</span>
-                  <span style={{fontWeight:700,fontSize:10,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                  {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
-                </div>
-                <FanCards count={Math.max(1,h.length||5)}/>
-              </Panel>
+              <div key={n} style={{display:"flex",alignItems:"center",gap:5,background:isCur?"rgba(0,0,0,.75)":"rgba(0,0,0,.5)",borderRadius:20,padding:"3px 9px 3px 5px",border:isCur?"1.5px solid #facc15":"1.5px solid transparent",opacity:isElim?.4:1}}>
+                <div style={{width:16,height:16,borderRadius:"50%",background:av(n),display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:900}}>{ini(n)}</div>
+                <span style={{fontSize:9,color:"#fff",fontWeight:700}}>{isElim?"💀":""}{n===YOU?"You":n}</span>
+                <span style={{fontSize:9,color:pct>70?"#f87171":"#86efac",fontFamily:T.mono,fontWeight:700}}>{sc}</span>
+              </div>
             );
           })}
         </div>
-        {/* Centre table */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,position:"relative",minHeight:200}}>
-          {/* Wild label */}
-          {wildCard&&(
-            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
-              <span style={{fontSize:13}}>🌟</span>
-              <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
-            </div>
-          )}
-          {/* Stock + Discard */}
-          <div style={{display:"flex",gap:20,alignItems:"flex-end"}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
-              {stock.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
-            </div>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-              {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
-            </div>
-          </div>
-          {/* Step indicator */}
-          {isMyTurn&&(
-            <div style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"6px 14px"}}>
-              {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:20,height:20,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                  <span style={{fontSize:11,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
-                  {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:12}}>›</span>}
+
+        {/* Timer */}
+        {isMyTurn&&<div style={{position:"absolute",top:6,right:8,zIndex:5}}><TimerRing timeLeft={timeLeft}/></div>}
+
+        {/* Opponents with fanned cards + pill */}
+        <div style={{display:"flex",gap:20,justifyContent:"center",alignItems:"flex-end",flexWrap:"wrap"}}>
+          {opponents.map(name=>{
+            const h=hands[name]||[],isCur=currentPlayer===name;
+            return(
+              <div key={name} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+                <FanCards count={Math.max(1,h.length||5)}/>
+                <div className="opp-pill" style={{border:isCur?"2px solid #facc15":"2px solid transparent"}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:av(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff"}}>{ini(name)}</div>
+                  <span style={{fontWeight:700,fontSize:13}}>{name}</span>
+                  {isCur&&<span className="play-badge">PLAY</span>}
                 </div>
-              ))}
+                <div style={{display:"flex",gap:3}}>{h.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(0,0,0,.25)"}}/>)}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Stock + Discard + Wild */}
+        <div style={{display:"flex",gap:20,alignItems:"flex-end",justifyContent:"center"}}>
+          {wildCard&&(
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,.5)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>Wild</div>
+              <Card card={wildCard} small/>
             </div>
           )}
-          <div style={{fontSize:12,color:T.muted,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
-          {/* Wild card peek — horizontal, ~30% visible */}
-          {wildCard&&<WildCardPeek card={wildCard}/>}
-        </div>
-      </div>
-      {/* My hand */}
-      <Panel style={{margin:"0 8px 10px",padding:"12px 14px",borderRadius:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontWeight:700,fontSize:13}}>You</span>
-            <span style={{fontSize:11,fontFamily:T.mono,color:T.muted}}>{handTotal(myHand,wildCard)} pts</span>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
+            {stock.length>0
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
+            }
           </div>
-          {isMyTurn?<div style={{display:"flex",gap:8}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} is thinking...`:"Wait..."}</span>}
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
+            {pileTop
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
+            }
+          </div>
         </div>
-        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",paddingTop:16}}>
-          {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop ✓":null}/>)}
+
+        {/* Steps + message */}
+        {isMyTurn?(
+          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
+            {[["Pick",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([lbl,done],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
+                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#16a34a":"rgba(0,0,0,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":"rgba(0,0,0,.4)",fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:9,color:done?"#15803d":"rgba(0,0,0,.45)",fontWeight:done?700:500}}>{lbl}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.2)",fontSize:9}}>›</span>}
+              </div>
+            ))}
+          </div>
+        ):(
+          <div style={{background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
+            <span style={{fontSize:10,color:"rgba(0,0,0,.5)",fontStyle:"italic"}}>{isAI(currentPlayer)?`🤖 ${currentPlayer} thinking...`:`⏳ ${currentPlayer}'s turn`}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── MY HAND ── */}
+      <div style={{display:"flex",gap:6,justifyContent:"center",padding:"4px 12px 0",overflowX:"auto",flexShrink:0}}>
+        {myHand.map((card,idx)=>(
+          <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
+        ))}
+      </div>
+
+      {/* ── BOTTOM BAR ── */}
+      <div className="btm-bar">
+        <div style={{width:42,height:42,borderRadius:"50%",background:av(YOU),display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",border:"2px solid #333",flexShrink:0}}>{ini(YOU)}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:"#fff",fontWeight:700,fontSize:13}}>You · <span style={{color:"#86efac",fontFamily:T.mono,fontSize:12}}>{handTotal(myHand,wildCard)}pt</span></div>
+          <div style={{display:"flex",gap:3,marginTop:3}}>{myHand.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.3)"}}/>)}</div>
         </div>
-      </Panel>
-      {/* Timer expired modal */}
+        {isMyTurn?(
+          <>
+            <button className="circ" onClick={doSwap} disabled={!readySwap}
+              style={{background:readySwap?"linear-gradient(135deg,#16a34a,#15803d)":"rgba(255,255,255,.08)",color:readySwap?"#fff":"#555",opacity:readySwap?1:.5,fontSize:9}}>SWAP</button>
+            <button className="circ" onClick={doShow} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>SHOW</button>
+          </>
+        ):null}
+        <button className="circ" onClick={()=>setShowRules(true)} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",fontSize:9}}>RULES</button>
+        <button className="circ" onClick={()=>setShowHistory(true)} style={{background:"linear-gradient(135deg,#0284c7,#0369a1)",color:"#fff",fontSize:14}}>📜</button>
+        <button className="circ" onClick={onQuit} style={{background:"linear-gradient(135deg,#dc2626,#991b1b)",color:"#fff",fontSize:9}}>Exit</button>
+      </div>
+
+      {/* Timer expired */}
       {showContinueAI&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <Panel style={{padding:"32px 28px",textAlign:"center",maxWidth:300,width:"90%"}}>
-            <div style={{fontSize:40,marginBottom:12}}>⏱</div>
-            <div style={{fontWeight:900,fontSize:18,marginBottom:8}}>Time's Up!</div>
-            <div style={{color:T.muted,fontSize:13,marginBottom:20}}>Your 30 seconds are over.</div>
-            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <Btn variant="ghost" onClick={onSkipAI}>Skip Turn</Btn>
-              <Btn variant="gold" onClick={onContinueAI}>+10s More</Btn>
+          <div style={{background:"#fff",borderRadius:20,padding:"28px 24px",textAlign:"center",maxWidth:280,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+            <div style={{fontSize:36,marginBottom:10}}>⏱</div>
+            <div style={{fontWeight:900,fontSize:17,marginBottom:6}}>Time's Up!</div>
+            <div style={{color:T.muted,fontSize:12,marginBottom:18}}>Your 30 seconds are over.</div>
+            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+              <Btn variant="ghost" onClick={onSkipAI}>Skip</Btn>
+              <Btn variant="gold" onClick={onContinueAI}>+10s</Btn>
             </div>
-          </Panel>
+          </div>
         </div>
       )}
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
