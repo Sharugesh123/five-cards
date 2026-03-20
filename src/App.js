@@ -391,76 +391,99 @@ function HomeScreen({onPlayAI,onPlayFriends}){
   const handlePen=e=>{const v=e.target.value.replace(/\D/g,"");setPenInput(v);const n=+v;if(n>=1&&n<=9999)setPenalty(n);};
 
   return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20,position:"relative",overflow:"hidden"}}>
+    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px",overflowX:"hidden"}}>
       <style>{BASE_CSS}</style>
-      <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 1px 1px,rgba(37,99,235,.07) 1px,transparent 0)",backgroundSize:"32px 32px",pointerEvents:"none"}}/>
-      <div style={{position:"absolute",top:-120,right:-80,width:320,height:320,borderRadius:"50%",background:"radial-gradient(circle,rgba(37,99,235,.12),transparent 70%)",pointerEvents:"none"}}/>
-      <div style={{position:"absolute",bottom:-80,left:-60,width:240,height:240,borderRadius:"50%",background:"radial-gradient(circle,rgba(16,185,129,.1),transparent 70%)",pointerEvents:"none"}}/>
 
-      <div style={{position:"relative",zIndex:1,width:"100%",maxWidth:400}}>
-        {/* Logo */}
-        <div style={{textAlign:"center",marginBottom:28,animation:"fadeUp .5s both"}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:10,marginBottom:8}}>
-            <span style={{fontSize:36}}>🃏</span>
-            <span style={{fontWeight:900,fontSize:40,letterSpacing:-2,color:T.ink}}>5 CARDS</span>
-          </div>
-          <div style={{fontSize:12,color:T.muted,letterSpacing:3,textTransform:"uppercase"}}>Swap · Claim · Survive</div>
-        </div>
+      {/* Hero */}
+      <div style={{textAlign:"center",padding:"48px 0 32px"}}>
+        <div style={{fontSize:56,marginBottom:8,animation:"pop .5s both"}}>🃏</div>
+        <h1 style={{fontWeight:900,fontSize:38,color:T.ink,margin:0,letterSpacing:-2,lineHeight:1}}>5 CARDS</h1>
+        <p style={{fontSize:11,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"8px 0 0"}}>Swap · Claim · Survive</p>
+      </div>
 
-        {/* ── Settings ── */}
-        <Panel style={{padding:"18px 20px",marginBottom:12,animation:"fadeUp .5s .05s both"}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>⚙️ Game Settings</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            {/* Elimination score */}
-            <div>
-              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>💀 Elim Score</div>
-              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
-                <input type="text" inputMode="numeric" value={limInput} onChange={handleLim} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid rgba(0,0,0,.1)",fontSize:18,fontWeight:700,color:T.ink,textAlign:"center",outline:"none",background:"rgba(0,0,0,.03)",fontFamily:T.mono,width:"100%"}}/>
-                <span style={{fontSize:11,color:T.muted,whiteSpace:"nowrap"}}>pts</span>
-              </div>
-              <div style={{display:"flex",gap:4}}>
-                {[100,200,300].map(v=><button key={v} onClick={()=>{setLimit(v);setLimInput(String(v));}} style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:limit===v?T.accent:"rgba(0,0,0,.06)",color:limit===v?"#fff":T.muted,transition:"all .15s"}}>{v}</button>)}
-              </div>
-            </div>
-            {/* Penalty */}
-            <div>
-              <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>⚠️ Wrong Show</div>
-              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
-                <input type="text" inputMode="numeric" value={penInput} onChange={handlePen} style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid rgba(0,0,0,.1)",fontSize:18,fontWeight:700,color:T.ink,textAlign:"center",outline:"none",background:"rgba(0,0,0,.03)",fontFamily:T.mono,width:"100%"}}/>
-                <span style={{fontSize:11,color:T.muted,whiteSpace:"nowrap"}}>pts</span>
-              </div>
-              <div style={{display:"flex",gap:4}}>
-                {[20,50,100].map(v=><button key={v} onClick={()=>{setPenalty(v);setPenInput(String(v));}} style={{flex:1,padding:"5px 0",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:penalty===v?T.red:"rgba(0,0,0,.06)",color:penalty===v?"#fff":T.muted,transition:"all .15s"}}>{v}</button>)}
-              </div>
+      <div style={{width:"100%",maxWidth:380}}>
+
+        {/* Settings — no box, just two inline fields */}
+        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>⚙️ Game Settings</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:28}}>
+          {/* Elim score */}
+          <div>
+            <p style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5}}>💀 Elim score</p>
+            <input type="text" inputMode="numeric" value={limInput} onChange={handleLim}
+              style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid rgba(0,0,0,.1)`,fontSize:20,fontWeight:800,color:T.ink,textAlign:"center",outline:"none",background:"#fff",fontFamily:T.mono,boxSizing:"border-box",boxShadow:"0 2px 8px rgba(0,0,0,.06)",marginBottom:6}}/>
+            <div style={{display:"flex",gap:4}}>
+              {[100,200,300].map(v=>(
+                <button key={v} onClick={()=>{setLimit(v);setLimInput(String(v));}}
+                  style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
+                    background:limit===v?T.accent:"rgba(0,0,0,.06)",color:limit===v?"#fff":T.muted,transition:"background .15s"}}>
+                  {v}
+                </button>
+              ))}
             </div>
           </div>
-        </Panel>
-
-        {/* ── VS AI — 2 to 6 players ── */}
-        <Panel style={{padding:"18px 20px",marginBottom:12,animation:"fadeUp .5s .1s both"}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>🤖 Play vs AI</div>
-          <div style={{fontSize:11,color:T.muted,marginBottom:10}}>Total players (you + AI opponents)</div>
-          <div style={{display:"flex",gap:6,marginBottom:10,justifyContent:"center"}}>
-            {[2,3,4,5,6].map(n=>(
-              <button key={n} onClick={()=>setPlayers(n)} style={{width:44,height:44,borderRadius:10,border:"none",cursor:"pointer",fontSize:16,fontWeight:900,background:players===n?T.accent:"rgba(0,0,0,.06)",color:players===n?"#fff":T.ink,transform:players===n?"scale(1.1)":"scale(1)",transition:"all .15s"}}>{n}</button>
-            ))}
+          {/* Penalty */}
+          <div>
+            <p style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:5}}>⚠️ Wrong show</p>
+            <input type="text" inputMode="numeric" value={penInput} onChange={handlePen}
+              style={{width:"100%",padding:"10px",borderRadius:10,border:`1.5px solid rgba(0,0,0,.1)`,fontSize:20,fontWeight:800,color:T.ink,textAlign:"center",outline:"none",background:"#fff",fontFamily:T.mono,boxSizing:"border-box",boxShadow:"0 2px 8px rgba(0,0,0,.06)",marginBottom:6}}/>
+            <div style={{display:"flex",gap:4}}>
+              {[20,50,100].map(v=>(
+                <button key={v} onClick={()=>{setPenalty(v);setPenInput(String(v));}}
+                  style={{flex:1,padding:"6px 0",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,
+                    background:penalty===v?T.red:"rgba(0,0,0,.06)",color:penalty===v?"#fff":T.muted,transition:"background .15s"}}>
+                  {v}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{fontSize:11,color:T.muted,textAlign:"center",marginBottom:12}}>
-            You + {players-1} AI: <span style={{fontWeight:700,color:T.ink}}>{AI_NAMES.slice(0,players-1).join(", ")}</span>
-          </div>
-          <Btn onClick={()=>onPlayAI(players,limit,penalty)} style={{width:"100%",justifyContent:"center"}}>▶ Play Online</Btn>
-        </Panel>
-
-        {/* ── Friends ── */}
-        <Panel style={{padding:"18px 20px",marginBottom:12,animation:"fadeUp .5s .15s both"}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>👫 Play with Friends</div>
-          <div style={{fontSize:12,color:T.muted,marginBottom:12}}>Real online multiplayer · any device 🌐</div>
-          <Btn variant="green" onClick={()=>onPlayFriends(limit,penalty)} style={{width:"100%"}}>🌐 Create / Join Room</Btn>
-        </Panel>
-
-        <div style={{textAlign:"center",animation:"fadeUp .5s .2s both"}}>
-          <button onClick={()=>setRules(true)} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font}}>📋 View Rules</button>
         </div>
+
+        {/* Divider */}
+        <div style={{height:1,background:"rgba(0,0,0,.07)",marginBottom:24}}/>
+
+        {/* VS AI */}
+        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>🤖 Play vs AI</p>
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:10}}>
+          {[2,3,4,5,6].map(n=>(
+            <button key={n} onClick={()=>setPlayers(n)}
+              style={{width:46,height:46,borderRadius:12,border:"none",cursor:"pointer",fontSize:17,fontWeight:900,
+                background:players===n?T.accent:"#fff",color:players===n?"#fff":T.ink,
+                boxShadow:players===n?"0 4px 12px rgba(37,99,235,.4)":"0 2px 6px rgba(0,0,0,.08)",
+                transform:players===n?"scale(1.12)":"scale(1)",transition:"all .15s"}}>
+              {n}
+            </button>
+          ))}
+        </div>
+        <p style={{fontSize:11,color:T.muted,textAlign:"center",marginBottom:14}}>
+          {AI_NAMES.slice(0,players-1).join(" · ")}
+        </p>
+        <button onClick={()=>onPlayAI(players,limit,penalty)}
+          style={{width:"100%",padding:"15px",borderRadius:14,border:"none",cursor:"pointer",
+            background:T.accent,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,
+            boxShadow:"0 6px 20px rgba(37,99,235,.35)",marginBottom:28,letterSpacing:.2}}>
+          ▶ Start vs AI
+        </button>
+
+        {/* Divider */}
+        <div style={{height:1,background:"rgba(0,0,0,.07)",marginBottom:24}}/>
+
+        {/* Friends */}
+        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:12}}>👫 Play with Friends</p>
+        <button onClick={()=>onPlayFriends(limit,penalty)}
+          style={{width:"100%",padding:"15px",borderRadius:14,border:"none",cursor:"pointer",
+            background:T.green,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,
+            boxShadow:"0 6px 20px rgba(16,185,129,.35)",marginBottom:28,letterSpacing:.2}}>
+          🌐 Create / Join Room
+        </button>
+
+        {/* Rules */}
+        <div style={{textAlign:"center"}}>
+          <button onClick={()=>setRules(true)}
+            style={{background:"none",border:"none",color:T.muted,fontSize:12,cursor:"pointer",fontFamily:T.font,padding:"4px 12px"}}>
+            📋 View Rules
+          </button>
+        </div>
+
       </div>
       {rules&&<RulesModal onClose={()=>setRules(false)} limit={limit} penalty={penalty}/>}
     </div>
