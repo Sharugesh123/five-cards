@@ -7,7 +7,7 @@
   ],
   "start_url": ".",
   "display": "fullscreen",
-  "orientation": "landscape",
+  "orientation": "any",
   "theme_color": "#E8B800",
   "background_color": "#E8B800",
   "categories": ["games","entertainment"]

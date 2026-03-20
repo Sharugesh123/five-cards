@@ -11,6 +11,52 @@ function dbListen(key,cb){let stopped=false,lastJson=null;async function poll(){
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
 
+// ── Window size hook ──────────────────────────────────────────────────────────
+function useWinSize(){
+  const get=()=>({w:window.innerWidth,h:window.innerHeight});
+  const [s,setS]=useState(get);
+  useEffect(()=>{
+    const fn=()=>setS(get());
+    window.addEventListener('resize',fn);
+    window.addEventListener('orientationchange',()=>setTimeout(fn,200));
+    return()=>window.removeEventListener('resize',fn);
+  },[]);
+  return s;
+}
+
+// ── Landscape wrapper ─────────────────────────────────────────────────────────
+// Always renders at landscape dimensions.
+// On portrait phone: rotates 90° so it fills the screen in landscape.
+function LandscapeWrap({children,style={}}){
+  const {w,h}=useWinSize();
+  const portrait=h>w;
+  const LW=portrait?h:w;   // landscape width  = longer side
+  const LH=portrait?w:h;   // landscape height = shorter side
+  if(portrait){
+    // Render at LW×LH, then rotate so it fills portrait screen
+    return(
+      <div style={{position:'fixed',top:0,left:0,overflow:'hidden',
+        width:LW,height:LH,
+        transformOrigin:'top left',
+        transform:`rotate(90deg) translateY(-${LW}px)`,
+        ...style}}>
+        {children}
+      </div>
+    );
+  }
+  return(
+    <div style={{position:'fixed',inset:0,width:LW,height:LH,overflow:'hidden',...style}}>
+      {children}
+    </div>
+  );
+}
+
+// ── Avatar helpers ────────────────────────────────────────────────────────────
+const AV_COLS=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626","#0891b2","#d97706"];
+function avCol(n){let h=0;for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);return AV_COLS[Math.abs(h)%AV_COLS.length];}
+function avIni(n){return(n||'?').slice(0,2).toUpperCase();}
+
+
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const T={bg:"#F4F5F7",surface:"rgba(255,255,255,0.72)",border:"rgba(255,255,255,0.9)",ink:"#111218",muted:"#6B7280",accent:"#2563EB",red:"#EF4444",green:"#10B981",gold:"#F59E0B",suit_r:"#E11D48",suit_b:"#1E3A8A",shadow:"0 8px 32px rgba(0,0,0,0.10),0 1.5px 4px rgba(0,0,0,0.06)",glow_g:"0 0 0 2.5px #10B981,0 8px 24px rgba(16,185,129,0.25)",glow_y:"0 0 0 2.5px #F59E0B,0 8px 24px rgba(245,158,11,0.25)",font:"'DM Sans',system-ui,sans-serif",mono:"'DM Mono',monospace"};
 
@@ -24,69 +70,6 @@ const BASE_CSS=`
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
-
-  /* ── Landscape game wrapper ── */
-  /* On portrait phones: rotate the game 90° so it fills landscape */
-  .game-ls{
-    position:fixed;
-    background:#E8B800;
-    /* Yellow checkered pattern like reference */
-    background-image:
-      radial-gradient(circle,rgba(0,0,0,.08) 1px,transparent 1px),
-      radial-gradient(circle,rgba(0,0,0,.04) 1px,transparent 1px);
-    background-size:28px 28px, 14px 14px;
-    background-position:0 0, 7px 7px;
-    display:flex;flex-direction:column;
-    font-family:'DM Sans',system-ui,sans-serif;
-  }
-  /* Portrait phone: rotate 90° to fill screen as landscape */
-  @media screen and (orientation:portrait){
-    .game-ls{
-      top:0; left:0;
-      width:100vh; height:100vw;
-      transform-origin:top left;
-      transform:rotate(90deg) translateY(-100%);
-    }
-  }
-  /* Already landscape: just fill screen */
-  @media screen and (orientation:landscape){
-    .game-ls{
-      inset:0;
-      width:100%; height:100%;
-    }
-  }
-
-  /* Opponent pill */
-  .opp-pill{
-    background:#111;color:#fff;
-    border-radius:40px;padding:6px 16px 6px 8px;
-    display:inline-flex;align-items:center;gap:8px;
-    box-shadow:0 4px 14px rgba(0,0,0,.4);
-    position:relative;
-  }
-  .play-badge{
-    position:absolute;top:-7px;right:-4px;
-    background:linear-gradient(135deg,#c026d3,#7c3aed);
-    color:#fff;font-size:8px;font-weight:900;letter-spacing:.5px;
-    border-radius:8px;padding:2px 6px;
-  }
-  /* Bottom bar */
-  .btm-bar{
-    background:#111;
-    border-radius:36px 36px 0 0;
-    padding:10px 14px 12px;
-    display:flex;align-items:center;
-    gap:8px;flex-shrink:0;
-    box-shadow:0 -4px 20px rgba(0,0,0,.3);
-  }
-  /* Circular button */
-  .circ{
-    width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,.2);
-    display:flex;align-items:center;justify-content:center;
-    cursor:pointer;font-size:10px;font-weight:900;letter-spacing:.3px;
-    flex-shrink:0;font-family:'DM Sans',system-ui,sans-serif;
-    box-shadow:0 2px 8px rgba(0,0,0,.3);
-  }
 `;
 
 // ── Game constants ────────────────────────────────────────────────────────────
@@ -787,127 +770,132 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   if(newlyElim.length>0)return<EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
   if(showGate&&isMyTurn)return<TurnGate playerName={myName} onReady={()=>{vibrate([100,50,100]);setShowGate(false);startTimer();}}/>;
   const opponents=activePlayers.filter(n=>n!==myName);
-  const av=n=>{const colors=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626"];let h=0;for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);return colors[Math.abs(h)%colors.length];};
-  const ini=n=>n.slice(0,2).toUpperCase();
+  const {w:sw,h:sh}=useWinSize();
+  const LW=sh>sw?sh:sw, LH=sh>sw?sw:sh;
+  // Scale everything to fit in landscape dimensions (base: 667w x 375h)
+  const sc=Math.min(LW/667,LH/375);
+  const S=v=>Math.round(v*sc);
 
   return(
-    <div className="game-ls">
+    <LandscapeWrap>
+      <div style={{width:'100%',height:'100%',
+        background:'#E8B800',
+        backgroundImage:'radial-gradient(circle,rgba(0,0,0,.09) 1px,transparent 1px),radial-gradient(circle,rgba(0,0,0,.04) 1px,transparent 1px)',
+        backgroundSize:S(28)+'px '+S(28)+'px,'+S(14)+'px '+S(14)+'px',
+        backgroundPosition:'0 0,'+S(7)+'px '+S(7)+'px',
+        fontFamily:T.font,display:'flex',flexDirection:'row',overflow:'hidden',position:'relative',
+      }}>
       <style>{BASE_CSS}</style>
+      {/* ── LEFT PANEL: My hand (vertical) + controls ── */}
+      <div style={{width:S(155),flexShrink:0,background:'#111',display:'flex',flexDirection:'column',alignItems:'center',padding:S(8)+' '+S(6)+'px',gap:S(4),overflowY:'hidden'}}>
+        {/* My avatar + name + pts */}
+        <div style={{display:'flex',alignItems:'center',gap:S(5),alignSelf:'stretch',marginBottom:S(2)}}>
+          <div style={{width:S(28),height:S(28),borderRadius:'50%',background:avCol(myName),display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(10),fontWeight:900,color:'#fff',flexShrink:0}}>{avIni(myName)}</div>
+          <div>
+            <div style={{color:'#fff',fontWeight:700,fontSize:S(10),lineHeight:1}}>You</div>
+            <div style={{color:'#86efac',fontFamily:T.mono,fontSize:S(9),fontWeight:700}}>{handTotal(myHand,wildCard)}pt</div>
+          </div>
+          {isMyTurn&&<div style={{marginLeft:'auto'}}><TimerRing timeLeft={timeLeft}/></div>}
+        </div>
+        {/* My 5 cards stacked vertically */}
+        <div style={{flex:1,display:'flex',flexDirection:'column',gap:S(3),justifyContent:'center',overflowY:'hidden',width:'100%',alignItems:'center'}}>
+          {myHand.map((card,idx)=>(
+            <div key={card.id} style={{transform:dropIdxs.includes(idx)?'translateX('+S(8)+'px)':'translateX(0)',transition:'transform .15s',flexShrink:0}}>
+              <Card card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?'Drop':null} small/>
+            </div>
+          ))}
+        </div>
+        {/* Action buttons */}
+        <div style={{display:'flex',flexDirection:'column',gap:S(4),width:'100%'}}>
+          {isMyTurn&&(
+            <>
+              <button onClick={doSwap} disabled={!readySwap} style={{width:'100%',padding:S(7)+'px 0',borderRadius:S(18),border:'none',cursor:readySwap?'pointer':'not-allowed',background:readySwap?'#16a34a':'rgba(255,255,255,.1)',color:readySwap?'#fff':'#555',fontSize:S(10),fontWeight:900,fontFamily:T.font,opacity:readySwap?1:.55,boxShadow:readySwap?'0 0 10px rgba(22,163,74,.5)':'none'}}>⇄ SWAP</button>
+              <button onClick={doShow} style={{width:'100%',padding:S(7)+'px 0',borderRadius:S(18),border:'none',cursor:'pointer',background:'#dc2626',color:'#fff',fontSize:S(10),fontWeight:900,fontFamily:T.font,boxShadow:'0 0 10px rgba(220,38,38,.4)'}}>📢 SHOW</button>
+            </>
+          )}
+          <div style={{display:'flex',gap:S(4),justifyContent:'center'}}>
+            <button onClick={()=>setShowRules(true)} style={{flex:1,padding:S(6)+'px 0',borderRadius:S(10),border:'none',cursor:'pointer',background:'#7c3aed',color:'#fff',fontSize:S(9),fontWeight:900,fontFamily:T.font}}>RULES</button>
+            <button onClick={()=>setShowHistory(true)} style={{flex:1,padding:S(6)+'px 0',borderRadius:S(10),border:'none',cursor:'pointer',background:'#0284c7',color:'#fff',fontSize:S(11)}}>📜</button>
+            <button onClick={onQuit} style={{flex:1,padding:S(6)+'px 0',borderRadius:S(10),border:'none',cursor:'pointer',background:'rgba(220,38,38,.7)',color:'#fff',fontSize:S(9),fontWeight:900,fontFamily:T.font}}>Exit</button>
+          </div>
+        </div>
+      </div>
 
-      {/* ── TOP AREA: scores + opponents + table ── */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-evenly",padding:"6px 12px",position:"relative",overflow:"hidden"}}>
-
-        {/* Score chips — top left */}
-        <div style={{position:"absolute",top:6,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
+      {/* ── CENTER: Table ── */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:S(8),padding:S(8)+'px',position:'relative'}}>
+        {/* Score chips top */}
+        <div style={{position:'absolute',top:S(6),left:'50%',transform:'translateX(-50%)',display:'flex',gap:S(5),zIndex:5}}>
           {activePlayers.map(n=>{
             const sc=scores?.[n]||0,pct=Math.min(100,(sc/sl)*100),isCur=currentPlayer===n,isMe=n===myName,isElim=(eliminated||[]).includes(n);
             return(
-              <div key={n} style={{display:"flex",alignItems:"center",gap:5,background:isCur?"rgba(0,0,0,.75)":"rgba(0,0,0,.5)",borderRadius:20,padding:"3px 9px 3px 5px",border:isCur?"1.5px solid #facc15":"1.5px solid transparent",opacity:isElim?.4:1}}>
-                <div style={{width:16,height:16,borderRadius:"50%",background:av(n),display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:900}}>{ini(n)}</div>
-                <span style={{fontSize:9,color:"#fff",fontWeight:700}}>{isElim?"💀":""}{isMe?"You":n}</span>
-                <span style={{fontSize:9,color:pct>70?"#f87171":"#86efac",fontFamily:T.mono,fontWeight:700}}>{sc}</span>
+              <div key={n} style={{background:isCur?'rgba(0,0,0,.85)':'rgba(0,0,0,.6)',borderRadius:S(20),padding:S(3)+'px '+S(9)+'px '+S(3)+'px '+S(5)+'px',display:'flex',alignItems:'center',gap:S(4),border:isCur?S(1.5)+'px solid #facc15':'none',opacity:isElim?.4:1}}>
+                <div style={{width:S(16),height:S(16),borderRadius:'50%',background:avCol(n),display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(7),color:'#fff',fontWeight:900}}>{avIni(n)}</div>
+                <span style={{fontSize:S(9),color:'#fff',fontWeight:700}}>{isElim?'💀':''}{isMe?'You':n}</span>
+                <span style={{fontSize:S(9),color:pct>70?'#f87171':'#86efac',fontFamily:T.mono,fontWeight:700}}>{sc}</span>
               </div>
             );
           })}
         </div>
 
-        {/* Timer — top right */}
-        {isMyTurn&&<div style={{position:"absolute",top:6,right:8,zIndex:5}}><TimerRing timeLeft={timeLeft}/></div>}
-
-        {/* Opponents with fanned cards + pill */}
-        <div style={{display:"flex",gap:20,justifyContent:"center",alignItems:"flex-end",flexWrap:"wrap"}}>
-          {opponents.map(name=>{
-            const h=hands?.[name]||[],isCur=currentPlayer===name;
-            return(
-              <div key={name} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-                <FanCards count={h.length||5}/>
-                <div className="opp-pill" style={{border:isCur?"2px solid #facc15":"2px solid transparent"}}>
-                  <div style={{width:32,height:32,borderRadius:"50%",background:av(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff"}}>{ini(name)}</div>
-                  <span style={{fontWeight:700,fontSize:13}}>{name}</span>
-                  {isCur&&<span className="play-badge">PLAY</span>}
-                </div>
-                <div style={{display:"flex",gap:3}}>{h.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(0,0,0,.25)"}}/>)}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Stock + Discard + Wild */}
-        <div style={{display:"flex",gap:20,alignItems:"flex-end",justifyContent:"center"}}>
-          {wildCard&&(
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,.5)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>Wild</div>
-              <Card card={wildCard} small/>
-            </div>
-          )}
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock?.length||0})</div>
-            {stock?.length>0
-              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓":null}/>
-              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
-            }
+        {/* Wild label */}
+        {wildCard&&(
+          <div style={{display:'inline-flex',alignItems:'center',gap:S(5),background:'rgba(245,158,11,.15)',border:'1px solid rgba(245,158,11,.3)',borderRadius:S(20),padding:S(3)+'px '+S(10)+'px'}}>
+            <span style={{fontSize:S(11)}}>🌟</span>
+            <span style={{fontSize:S(10),fontWeight:700,color:'#92400e'}}>Wild · {wildCard.rank}s = 0 pts</span>
           </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-            {pileTop
-              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓":null}/>
-              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
-            }
+        )}
+
+        {/* Stock + Discard */}
+        <div style={{display:'flex',gap:S(20),alignItems:'flex-end',justifyContent:'center'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:S(8),fontWeight:600,color:'rgba(0,0,0,.5)',marginBottom:S(4),textTransform:'uppercase',letterSpacing:.5}}>Stock ({stock?.length||0})</div>
+            {stock?.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==='stock'} onClick={isMyTurn?selStock:undefined} badge={drawFrom==='stock'?'✓ Draw':null}/>:<div style={{width:64,height:92,borderRadius:10,border:'2px dashed rgba(0,0,0,.12)'}}/>}
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:S(8),fontWeight:600,color:'rgba(0,0,0,.5)',marginBottom:S(4),textTransform:'uppercase',letterSpacing:.5}}>Discard</div>
+            {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==='pile'} onClick={isMyTurn?selPile:undefined} badge={drawFrom==='pile'?'✓ Draw':null}/>:<div style={{width:64,height:92,borderRadius:10,border:'2px dashed rgba(0,0,0,.12)'}}/>}
           </div>
         </div>
 
-        {/* Step indicator + message */}
-        {isMyTurn?(
-          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
-            {[["Pick",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([lbl,done],i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#16a34a":"rgba(0,0,0,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":"rgba(0,0,0,.4)",fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                <span style={{fontSize:9,color:done?"#15803d":"rgba(0,0,0,.45)",fontWeight:done?700:500}}>{lbl}</span>
-                {i<2&&<span style={{color:"rgba(0,0,0,.2)",fontSize:9}}>›</span>}
+        {/* Steps */}
+        {isMyTurn&&(
+          <div style={{display:'flex',gap:S(5),alignItems:'center',background:'rgba(0,0,0,.1)',borderRadius:S(20),padding:S(4)+'px '+S(12)+'px'}}>
+            {[['Pick',drawFrom!=null],['Drop',dropIdxs.length>0],['SWAP',readySwap]].map(([lbl,done],i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:S(3)}}>
+                <div style={{width:S(15),height:S(15),borderRadius:'50%',background:done?'#16a34a':'rgba(0,0,0,.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(7),color:done?'#fff':'rgba(0,0,0,.4)',fontWeight:700}}>{done?'✓':i+1}</div>
+                <span style={{fontSize:S(9),color:done?'#15803d':'rgba(0,0,0,.45)',fontWeight:done?700:500}}>{lbl}</span>
+                {i<2&&<span style={{color:'rgba(0,0,0,.2)',fontSize:S(9)}}>›</span>}
               </div>
             ))}
           </div>
-        ):(
-          <div style={{background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
-            <span style={{fontSize:10,color:"rgba(0,0,0,.5)",fontStyle:"italic"}}>⏳ {currentPlayer}'s turn...</span>
-          </div>
         )}
+        <div style={{fontSize:S(10),color:isMyTurn?'#92400e':'rgba(0,0,0,.5)',fontWeight:isMyTurn?700:400,textAlign:'center'}}>
+          {isMyTurn?msg:('⏳ '+currentPlayer+'\'s turn...')}
+        </div>
       </div>
 
-      {/* ── MY HAND above bottom bar ── */}
-      <div style={{display:"flex",gap:6,justifyContent:"center",padding:"4px 12px 0",overflowX:"auto",flexShrink:0}}>
-        {myHand.map((card,idx)=>(
-          <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
-        ))}
-      </div>
-
-      {/* ── BOTTOM BAR ── */}
-      <div className="btm-bar">
-        {/* My avatar */}
-        <div style={{width:42,height:42,borderRadius:"50%",background:av(myName),display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",border:"2px solid #333",flexShrink:0}}>
-          {ini(myName)}
-        </div>
-        {/* Name + card dots */}
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{color:"#fff",fontWeight:700,fontSize:13}}>You · <span style={{color:"#86efac",fontFamily:T.mono,fontSize:12}}>{handTotal(myHand,wildCard)}pt</span></div>
-          <div style={{display:"flex",gap:3,marginTop:3}}>{myHand.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.3)"}}/>)}</div>
-        </div>
-        {/* Action buttons */}
-        {isMyTurn?(
-          <>
-            <button className="circ" onClick={doSwap} disabled={!readySwap}
-              style={{background:readySwap?"linear-gradient(135deg,#16a34a,#15803d)":"rgba(255,255,255,.08)",color:readySwap?"#fff":"#555",opacity:readySwap?1:.5,fontSize:9}}>SWAP</button>
-            <button className="circ" onClick={doShow} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>SHOW</button>
-          </>
-        ):null}
-        <button className="circ" onClick={()=>setShowRules(true)} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",fontSize:9}}>RULES</button>
-        <button className="circ" onClick={()=>setShowHistory(true)} style={{background:"linear-gradient(135deg,#0284c7,#0369a1)",color:"#fff",fontSize:14}}>📜</button>
-        <button className="circ" onClick={onQuit} style={{background:"linear-gradient(135deg,#dc2626,#991b1b)",color:"#fff",fontSize:9}}>Exit</button>
+      {/* ── RIGHT: Opponents ── */}
+      <div style={{width:S(150),flexShrink:0,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',gap:S(10),padding:S(8)+'px',overflowY:'hidden'}}>
+        {opponents.map(name=>{
+          const h=hands?.[name]||[],isCur=currentPlayer===name;
+          return(
+            <div key={name} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:S(4)}}>
+              <FanCards count={Math.max(1,h.length||5)}/>
+              <div style={{background:'#111',borderRadius:S(30),padding:S(5)+'px '+S(12)+'px '+S(5)+'px '+S(7)+'px',display:'inline-flex',alignItems:'center',gap:S(6),border:isCur?S(2)+'px solid #facc15':'none',position:'relative'}}>
+                <div style={{width:S(26),height:S(26),borderRadius:'50%',background:avCol(name),display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(10),fontWeight:900,color:'#fff'}}>{avIni(name)}</div>
+                <span style={{fontWeight:700,fontSize:S(11),color:'#fff'}}>{name}</span>
+                {isCur&&<span style={{position:'absolute',top:S(-7),right:S(-4),background:'linear-gradient(135deg,#c026d3,#7c3aed)',color:'#fff',fontSize:S(7),fontWeight:900,borderRadius:S(7),padding:S(2)+'px '+S(5)+'px'}}>PLAY</span>}
+              </div>
+              <div style={{display:'flex',gap:S(3)}}>{h.map((_,i)=><div key={i} style={{width:S(6),height:S(6),borderRadius:'50%',background:'rgba(0,0,0,.2)'}}/>)}</div>
+            </div>
+          );
+        })}
       </div>
 
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
-    </div>
+      </div>
+    </LandscapeWrap>
   );
 }
 
@@ -1107,137 +1095,134 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   if(roundResult)return<RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit} penaltyPoints={penaltyPoints} onNext={nextRound} canNext={true} history={history}/>;
   if(newlyElim.length>0)return<EliminatedBanner name={newlyElim[0]} onClose={()=>{const nr=round+1;setNewlyElim([]);setRound(nr);deal(active.filter(n=>!eliminated.includes(n)),nr);}}/>;
 
-  const av=n=>{const colors=["#7c3aed","#db2777","#ea580c","#16a34a","#0284c7","#dc2626"];let h=0;for(let i=0;i<n.length;i++)h=n.charCodeAt(i)+((h<<5)-h);return colors[Math.abs(h)%colors.length];};
-  const ini=n=>n.slice(0,2).toUpperCase();
+  const {w:sw,h:sh}=useWinSize();
+  const LW=sh>sw?sh:sw, LH=sh>sw?sw:sh;
+  const sc=Math.min(LW/667,LH/375);
+  const S=v=>Math.round(v*sc);
   const opponents=active.filter(n=>n!==YOU);
 
   return(
-    <div className="game-ls">
+    <LandscapeWrap>
+      <div style={{width:'100%',height:'100%',
+        background:'#E8B800',
+        backgroundImage:'radial-gradient(circle,rgba(0,0,0,.09) 1px,transparent 1px),radial-gradient(circle,rgba(0,0,0,.04) 1px,transparent 1px)',
+        backgroundSize:S(28)+'px '+S(28)+'px,'+S(14)+'px '+S(14)+'px',
+        backgroundPosition:'0 0,'+S(7)+'px '+S(7)+'px',
+        fontFamily:T.font,display:'flex',flexDirection:'row',overflow:'hidden',position:'relative',
+      }}>
       <style>{BASE_CSS}</style>
 
-      {/* ── TOP: scores + opponents + table ── */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-evenly",padding:"6px 12px",position:"relative",overflow:"hidden"}}>
-
-        {/* Score chips */}
-        <div style={{position:"absolute",top:6,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
-          {allPlayers.map(n=>{
-            const sc=scores[n]||0,pct=Math.min(100,(sc/scoreLimit)*100),isCur=active[turnIdx]===n,isElim=eliminated.includes(n);
-            return(
-              <div key={n} style={{display:"flex",alignItems:"center",gap:5,background:isCur?"rgba(0,0,0,.75)":"rgba(0,0,0,.5)",borderRadius:20,padding:"3px 9px 3px 5px",border:isCur?"1.5px solid #facc15":"1.5px solid transparent",opacity:isElim?.4:1}}>
-                <div style={{width:16,height:16,borderRadius:"50%",background:av(n),display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,color:"#fff",fontWeight:900}}>{ini(n)}</div>
-                <span style={{fontSize:9,color:"#fff",fontWeight:700}}>{isElim?"💀":""}{n===YOU?"You":n}</span>
-                <span style={{fontSize:9,color:pct>70?"#f87171":"#86efac",fontFamily:T.mono,fontWeight:700}}>{sc}</span>
-              </div>
-            );
-          })}
+      {/* ── LEFT: My hand + controls ── */}
+      <div style={{width:S(155),flexShrink:0,background:'#111',display:'flex',flexDirection:'column',alignItems:'center',padding:S(8)+'px '+S(6)+'px',gap:S(4)}}>
+        <div style={{display:'flex',alignItems:'center',gap:S(5),alignSelf:'stretch',marginBottom:S(2)}}>
+          <div style={{width:S(28),height:S(28),borderRadius:'50%',background:avCol(YOU),display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(10),fontWeight:900,color:'#fff',flexShrink:0}}>{avIni(YOU)}</div>
+          <div>
+            <div style={{color:'#fff',fontWeight:700,fontSize:S(10),lineHeight:1}}>You</div>
+            <div style={{color:'#86efac',fontFamily:T.mono,fontSize:S(9),fontWeight:700}}>{handTotal(myHand,wildCard)}pt</div>
+          </div>
+          {isMyTurn&&<div style={{marginLeft:'auto'}}><TimerRing timeLeft={timeLeft}/></div>}
         </div>
-
-        {/* Timer */}
-        {isMyTurn&&<div style={{position:"absolute",top:6,right:8,zIndex:5}}><TimerRing timeLeft={timeLeft}/></div>}
-
-        {/* Opponents with fanned cards + pill */}
-        <div style={{display:"flex",gap:20,justifyContent:"center",alignItems:"flex-end",flexWrap:"wrap"}}>
-          {opponents.map(name=>{
-            const h=hands[name]||[],isCur=currentPlayer===name;
-            return(
-              <div key={name} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-                <FanCards count={Math.max(1,h.length||5)}/>
-                <div className="opp-pill" style={{border:isCur?"2px solid #facc15":"2px solid transparent"}}>
-                  <div style={{width:32,height:32,borderRadius:"50%",background:av(name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff"}}>{ini(name)}</div>
-                  <span style={{fontWeight:700,fontSize:13}}>{name}</span>
-                  {isCur&&<span className="play-badge">PLAY</span>}
-                </div>
-                <div style={{display:"flex",gap:3}}>{h.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(0,0,0,.25)"}}/>)}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Stock + Discard + Wild */}
-        <div style={{display:"flex",gap:20,alignItems:"flex-end",justifyContent:"center"}}>
-          {wildCard&&(
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:8,fontWeight:700,color:"rgba(0,0,0,.5)",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>Wild</div>
-              <Card card={wildCard} small/>
+        <div style={{flex:1,display:'flex',flexDirection:'column',gap:S(3),justifyContent:'center',overflowY:'hidden',width:'100%',alignItems:'center'}}>
+          {myHand.map((card,idx)=>(
+            <div key={card.id} style={{transform:dropIdxs.includes(idx)?'translateX('+S(8)+'px)':'translateX(0)',transition:'transform .15s',flexShrink:0}}>
+              <Card card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?'Drop':null} small/>
             </div>
+          ))}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:S(4),width:'100%'}}>
+          {isMyTurn&&(
+            <>
+              <button onClick={doSwap} disabled={!readySwap} style={{width:'100%',padding:S(7)+'px 0',borderRadius:S(18),border:'none',cursor:readySwap?'pointer':'not-allowed',background:readySwap?'#16a34a':'rgba(255,255,255,.1)',color:readySwap?'#fff':'#555',fontSize:S(10),fontWeight:900,fontFamily:T.font,opacity:readySwap?1:.55,boxShadow:readySwap?'0 0 10px rgba(22,163,74,.5)':'none'}}>⇄ SWAP</button>
+              <button onClick={doShow} style={{width:'100%',padding:S(7)+'px 0',borderRadius:S(18),border:'none',cursor:'pointer',background:'#dc2626',color:'#fff',fontSize:S(10),fontWeight:900,fontFamily:T.font,boxShadow:'0 0 10px rgba(220,38,38,.4)'}}>📢 SHOW</button>
+            </>
           )}
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
-            {stock.length>0
-              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓":null}/>
-              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
-            }
-          </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:8,fontWeight:600,color:"rgba(0,0,0,.45)",marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-            {pileTop
-              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓":null}/>
-              :<div style={{width:64,height:92,borderRadius:10,border:"3px dashed rgba(0,0,0,.15)"}}/>
-            }
+          <div style={{display:'flex',gap:S(4),justifyContent:'center'}}>
+            <button onClick={()=>setShowRules(true)} style={{flex:1,padding:S(6)+'px 0',borderRadius:S(10),border:'none',cursor:'pointer',background:'#7c3aed',color:'#fff',fontSize:S(9),fontWeight:900,fontFamily:T.font}}>RULES</button>
+            <button onClick={()=>setShowHistory(true)} style={{flex:1,padding:S(6)+'px 0',borderRadius:S(10),border:'none',cursor:'pointer',background:'#0284c7',color:'#fff',fontSize:S(11)}}>📜</button>
+            <button onClick={onQuit} style={{flex:1,padding:S(6)+'px 0',borderRadius:S(10),border:'none',cursor:'pointer',background:'rgba(220,38,38,.7)',color:'#fff',fontSize:S(9),fontWeight:900,fontFamily:T.font}}>Exit</button>
           </div>
         </div>
+      </div>
 
-        {/* Steps + message */}
-        {isMyTurn?(
-          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
-            {[["Pick",drawFrom!=null],["Drop",dropIdxs.length>0],["SWAP",readySwap]].map(([lbl,done],i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:16,height:16,borderRadius:"50%",background:done?"#16a34a":"rgba(0,0,0,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:done?"#fff":"rgba(0,0,0,.4)",fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                <span style={{fontSize:9,color:done?"#15803d":"rgba(0,0,0,.45)",fontWeight:done?700:500}}>{lbl}</span>
-                {i<2&&<span style={{color:"rgba(0,0,0,.2)",fontSize:9}}>›</span>}
+      {/* ── CENTER ── */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:S(8),padding:S(8)+'px',position:'relative'}}>
+        <div style={{position:'absolute',top:S(6),left:'50%',transform:'translateX(-50%)',display:'flex',gap:S(5),zIndex:5}}>
+          {allPlayers.map(n=>{
+            const sc2=scores[n]||0,pct=Math.min(100,(sc2/scoreLimit)*100),isCur=active[turnIdx]===n,isElim=eliminated.includes(n);
+            return(
+              <div key={n} style={{background:isCur?'rgba(0,0,0,.85)':'rgba(0,0,0,.6)',borderRadius:S(20),padding:S(3)+'px '+S(9)+'px '+S(3)+'px '+S(5)+'px',display:'flex',alignItems:'center',gap:S(4),border:isCur?S(1.5)+'px solid #facc15':'none',opacity:isElim?.4:1}}>
+                <div style={{width:S(16),height:S(16),borderRadius:'50%',background:avCol(n),display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(7),color:'#fff',fontWeight:900}}>{avIni(n)}</div>
+                <span style={{fontSize:S(9),color:'#fff',fontWeight:700}}>{isElim?'💀':''}{n===YOU?'You':n}</span>
+                <span style={{fontSize:S(9),color:pct>70?'#f87171':'#86efac',fontFamily:T.mono,fontWeight:700}}>{sc2}</span>
+              </div>
+            );
+          })}
+        </div>
+        {wildCard&&(
+          <div style={{display:'inline-flex',alignItems:'center',gap:S(5),background:'rgba(245,158,11,.15)',border:'1px solid rgba(245,158,11,.3)',borderRadius:S(20),padding:S(3)+'px '+S(10)+'px'}}>
+            <span style={{fontSize:S(11)}}>🌟</span>
+            <span style={{fontSize:S(10),fontWeight:700,color:'#92400e'}}>Wild · {wildCard.rank}s = 0 pts</span>
+          </div>
+        )}
+        <div style={{display:'flex',gap:S(20),alignItems:'flex-end',justifyContent:'center'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:S(8),fontWeight:600,color:'rgba(0,0,0,.5)',marginBottom:S(4),textTransform:'uppercase',letterSpacing:.5}}>Stock ({stock.length})</div>
+            {stock.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==='stock'} onClick={isMyTurn?selStock:undefined} badge={drawFrom==='stock'?'✓':null}/>:<div style={{width:64,height:92,borderRadius:10,border:'2px dashed rgba(0,0,0,.12)'}}/>}
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:S(8),fontWeight:600,color:'rgba(0,0,0,.5)',marginBottom:S(4),textTransform:'uppercase',letterSpacing:.5}}>Discard</div>
+            {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==='pile'} onClick={isMyTurn?selPile:undefined} badge={drawFrom==='pile'?'✓':null}/>:<div style={{width:64,height:92,borderRadius:10,border:'2px dashed rgba(0,0,0,.12)'}}/>}
+          </div>
+        </div>
+        {isMyTurn&&(
+          <div style={{display:'flex',gap:S(5),alignItems:'center',background:'rgba(0,0,0,.1)',borderRadius:S(20),padding:S(4)+'px '+S(12)+'px'}}>
+            {[['Pick',drawFrom!=null],['Drop',dropIdxs.length>0],['SWAP',readySwap]].map(([lbl,done],i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:S(3)}}>
+                <div style={{width:S(15),height:S(15),borderRadius:'50%',background:done?'#16a34a':'rgba(0,0,0,.15)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(7),color:done?'#fff':'rgba(0,0,0,.4)',fontWeight:700}}>{done?'✓':i+1}</div>
+                <span style={{fontSize:S(9),color:done?'#15803d':'rgba(0,0,0,.45)',fontWeight:done?700:500}}>{lbl}</span>
+                {i<2&&<span style={{color:'rgba(0,0,0,.2)',fontSize:S(9)}}>›</span>}
               </div>
             ))}
           </div>
-        ):(
-          <div style={{background:"rgba(0,0,0,.12)",borderRadius:20,padding:"5px 14px"}}>
-            <span style={{fontSize:10,color:"rgba(0,0,0,.5)",fontStyle:"italic"}}>{isAI(currentPlayer)?`🤖 ${currentPlayer} thinking...`:`⏳ ${currentPlayer}'s turn`}</span>
-          </div>
         )}
+        <div style={{fontSize:S(10),color:isMyTurn?'#92400e':'rgba(0,0,0,.5)',fontWeight:isMyTurn?700:400,textAlign:'center'}}>{msg}</div>
       </div>
 
-      {/* ── MY HAND ── */}
-      <div style={{display:"flex",gap:6,justifyContent:"center",padding:"4px 12px 0",overflowX:"auto",flexShrink:0}}>
-        {myHand.map((card,idx)=>(
-          <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
-        ))}
+      {/* ── RIGHT: Opponents ── */}
+      <div style={{width:S(150),flexShrink:0,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',gap:S(10),padding:S(8)+'px',overflowY:'hidden'}}>
+        {opponents.map(name=>{
+          const h=hands[name]||[],isCur=currentPlayer===name;
+          return(
+            <div key={name} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:S(4)}}>
+              <FanCards count={Math.max(1,h.length||5)}/>
+              <div style={{background:'#111',borderRadius:S(30),padding:S(5)+'px '+S(12)+'px '+S(5)+'px '+S(7)+'px',display:'inline-flex',alignItems:'center',gap:S(6),border:isCur?S(2)+'px solid #facc15':'none',position:'relative'}}>
+                <div style={{width:S(26),height:S(26),borderRadius:'50%',background:avCol(name),display:'flex',alignItems:'center',justifyContent:'center',fontSize:S(10),fontWeight:900,color:'#fff'}}>{avIni(name)}</div>
+                <span style={{fontWeight:700,fontSize:S(11),color:'#fff'}}>{name}</span>
+                {isCur&&<span style={{position:'absolute',top:S(-7),right:S(-4),background:'linear-gradient(135deg,#c026d3,#7c3aed)',color:'#fff',fontSize:S(7),fontWeight:900,borderRadius:S(7),padding:S(2)+'px '+S(5)+'px'}}>PLAY</span>}
+              </div>
+              <div style={{display:'flex',gap:S(3)}}>{h.map((_,i)=><div key={i} style={{width:S(6),height:S(6),borderRadius:'50%',background:'rgba(0,0,0,.2)'}}/>)}</div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* ── BOTTOM BAR ── */}
-      <div className="btm-bar">
-        <div style={{width:42,height:42,borderRadius:"50%",background:av(YOU),display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",border:"2px solid #333",flexShrink:0}}>{ini(YOU)}</div>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{color:"#fff",fontWeight:700,fontSize:13}}>You · <span style={{color:"#86efac",fontFamily:T.mono,fontSize:12}}>{handTotal(myHand,wildCard)}pt</span></div>
-          <div style={{display:"flex",gap:3,marginTop:3}}>{myHand.map((_,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"rgba(255,255,255,.3)"}}/>)}</div>
-        </div>
-        {isMyTurn?(
-          <>
-            <button className="circ" onClick={doSwap} disabled={!readySwap}
-              style={{background:readySwap?"linear-gradient(135deg,#16a34a,#15803d)":"rgba(255,255,255,.08)",color:readySwap?"#fff":"#555",opacity:readySwap?1:.5,fontSize:9}}>SWAP</button>
-            <button className="circ" onClick={doShow} style={{background:"linear-gradient(135deg,#dc2626,#b91c1c)",color:"#fff",fontSize:9}}>SHOW</button>
-          </>
-        ):null}
-        <button className="circ" onClick={()=>setShowRules(true)} style={{background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",fontSize:9}}>RULES</button>
-        <button className="circ" onClick={()=>setShowHistory(true)} style={{background:"linear-gradient(135deg,#0284c7,#0369a1)",color:"#fff",fontSize:14}}>📜</button>
-        <button className="circ" onClick={onQuit} style={{background:"linear-gradient(135deg,#dc2626,#991b1b)",color:"#fff",fontSize:9}}>Exit</button>
-      </div>
-
-      {/* Timer expired */}
       {showContinueAI&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{background:"#fff",borderRadius:20,padding:"28px 24px",textAlign:"center",maxWidth:280,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+        <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.5)',backdropFilter:'blur(6px)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <Panel style={{padding:'28px 24px',textAlign:'center',maxWidth:260,width:'90%'}}>
             <div style={{fontSize:36,marginBottom:10}}>⏱</div>
             <div style={{fontWeight:900,fontSize:17,marginBottom:6}}>Time's Up!</div>
-            <div style={{color:T.muted,fontSize:12,marginBottom:18}}>Your 30 seconds are over.</div>
-            <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+            <div style={{color:T.muted,fontSize:12,marginBottom:16}}>Your 30s are over.</div>
+            <div style={{display:'flex',gap:8,justifyContent:'center'}}>
               <Btn variant="ghost" onClick={onSkipAI}>Skip</Btn>
               <Btn variant="gold" onClick={onContinueAI}>+10s</Btn>
             </div>
-          </div>
+          </Panel>
         </div>
       )}
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
-    </div>
+      </div>
+    </LandscapeWrap>
   );
 }
 
