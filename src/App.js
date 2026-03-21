@@ -20,75 +20,65 @@ async function dbMerge(key,u){
   return r.json();
 }
 
-// ── Real-time listener using Firebase SSE (instant push, replaces polling) ────
-// Firebase Realtime DB supports ?accept=text/event-stream for server-push.
-// This gives <200ms updates vs 1500ms polling — the root cause of all game lag.
-function dbListen(key, cb){
-  let stopped = false;
-  let es = null;
-  let pollTimer = null;
-  let lastJson = null;
+// ── Real-time listener: Firebase SSE streaming ────────────────────────────────
+// Was: polling every 1500ms → players saw moves 0-1.5s late
+// Now: Firebase pushes updates instantly (<200ms) via Server-Sent Events
+// Falls back to 700ms polling if SSE is blocked
+function dbListen(key,cb){
+  let stopped=false,lastJson=null,es=null,pollTimer=null;
 
   function stopAll(){
-    stopped = true;
-    if(es){ try{ es.close(); }catch(_){} es = null; }
-    if(pollTimer){ clearTimeout(pollTimer); pollTimer = null; }
+    stopped=true;
+    if(es){try{es.close();}catch(_){}es=null;}
+    if(pollTimer){clearTimeout(pollTimer);pollTimer=null;}
   }
 
-  // Fetch immediately so UI shows current state right away
+  // Immediately fetch current state so UI shows without waiting
   fetch(`${FB}/${key}.json`)
     .then(r=>r.ok?r.text():null)
-    .then(t=>{ if(t&&!stopped){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} } })
+    .then(t=>{if(t&&!stopped){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}} )
     .catch(()=>{});
 
-  // Try SSE streaming — instant push from Firebase
+  // SSE: Firebase pushes data the moment it changes
   function startSSE(){
     try{
-      es = new EventSource(`${FB}/${key}.json?accept=text%2Fevent-stream`);
-      es.addEventListener('put', e=>{
-        if(stopped) return;
+      es=new EventSource(`${FB}/${key}.json?accept=text%2Fevent-stream`);
+      es.addEventListener('put',ev=>{
+        if(stopped)return;
         try{
-          const d = JSON.parse(e.data);
-          // Firebase SSE: {path, data} — path "/" = full value
-          if(d && d.path === '/' && d.data !== null) cb(d.data);
-          else if(d && d.path !== '/' && d.data !== null){
-            // Partial update — do a quick GET for full state
+          const d=JSON.parse(ev.data);
+          if(d&&d.path==='/'&&d.data!==null){lastJson=JSON.stringify(d.data);cb(d.data);}
+          else if(d&&d.path!=='/'&&d.data!==null){
+            // Partial path update — GET full state
             fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{
-              if(!stopped && t !== lastJson){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} }
+              if(!stopped&&t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}
             }).catch(()=>{});
           }
         }catch(_){}
       });
-      es.addEventListener('patch', ()=>{
-        if(stopped) return;
+      es.addEventListener('patch',()=>{
+        if(stopped)return;
         fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{
-          if(!stopped && t !== lastJson){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} }
+          if(!stopped&&t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}
         }).catch(()=>{});
       });
-      es.onerror = ()=>{
-        if(stopped) return;
-        if(es){ try{ es.close(); }catch(_){} es=null; }
-        // SSE failed — fall back to fast polling at 600ms
-        startFallbackPoll();
+      es.onerror=()=>{
+        if(stopped)return;
+        if(es){try{es.close();}catch(_){}es=null;}
+        startFallback(); // SSE failed, use fast polling
       };
-    } catch(_){
-      startFallbackPoll();
-    }
+    }catch(_){startFallback();}
   }
 
-  // Fallback polling at 600ms (2.5x faster than before)
-  function startFallbackPoll(){
-    if(stopped) return;
+  // Fallback: 700ms polling (2x faster than before)
+  function startFallback(){
     async function poll(){
-      if(stopped) return;
+      if(stopped)return;
       try{
-        const r = await fetch(`${FB}/${key}.json`);
-        if(r.ok){
-          const t = await r.text();
-          if(t !== lastJson){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} }
-        }
+        const r=await fetch(`${FB}/${key}.json`);
+        if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}
       }catch(_){}
-      if(!stopped) pollTimer = setTimeout(poll, 600);
+      if(!stopped)pollTimer=setTimeout(poll,700);
     }
     poll();
   }
@@ -628,8 +618,10 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
     if(unsubRef.current)unsubRef.current();
     unsubRef.current=dbListen(`rooms/${c}`,data=>{
       if(!data)return;
-      setRoom(data);
-      if(data.started)onStart(data.players,data.scoreLimit,c,nameRef.current.trim());
+      // Strip gameState from room display (gameState is large, not needed here)
+      const roomData={...data};delete roomData.gameState;
+      setRoom(roomData);
+      if(data.started)onStart(data.players,data.scoreLimit||scoreLimit,c,nameRef.current.trim());
     });
   }
 
@@ -644,7 +636,7 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
       scores:Object.fromEntries(ap.map(p=>[p,0])),history:[],
       eliminated:[],activePlayers:ap,allPlayers:ap,penalty:room.penalty||50,
       turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
-    // One atomic PUT instead of 2 sequential writes — cuts game start lag in half
+    // Single atomic write: sets gameState + started:true in one request
     await dbSet(`rooms/${room.code}`,{...room,started:true,gameState:gs});
   }
 
@@ -732,7 +724,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [showRules,setShowRules]=useState(false);
   const [showHistory,setShowHistory]=useState(false);
   const [showGate,setShowGate]=useState(false);
-  const [showContinue,setShowContinue]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
   const unsubRef=useRef(null);
@@ -751,25 +742,20 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
-    // Listen to full room (handles gameState embedded from startGame PUT)
-    // Falls back to gameState subpath
-    function handleGs(g){
-      if(!g)return;
-      // If full room object received, extract gameState
-      const gs2 = g.gameState || g;
-      if(!gs2.activePlayers)return;
-      setGs(gs2);
-      const cp=gs2.activePlayers[gs2.turnIdx];
-      const tk=`${gs2.round||1}_${gs2.turnIdx}`;
+    function processGs(g){
+      if(!g||!g.activePlayers)return;
+      setGs(g);
+      const cp=g.activePlayers[g.turnIdx];
+      const tk=`${g.round||1}_${g.turnIdx}`;
       if(cp===myName&&prevTurnRef.current!==tk){
         prevTurnRef.current=tk;
         setDrawFrom(null);setDropIdxs([]);setShowGate(true);
         setMsg("Pick source · select drop · SWAP");
         vibrate([100,50,100]);startTimer();
       }
-      if(gs2.roundResult?.justElim?.length>0&&!gs2.roundResult.shown)setNewlyElim(gs2.roundResult.justElim);
+      if(g.roundResult?.justElim?.length>0&&!g.roundResult.shown)setNewlyElim(g.roundResult.justElim);
     }
-    const unsub=dbListen(`rooms/${roomCode}/gameState`,handleGs);
+    const unsub=dbListen(`rooms/${roomCode}/gameState`,processGs);
     unsubRef.current=unsub;
     return()=>{if(unsubRef.current)unsubRef.current();clearInterval(timerRef.current);};
   },[roomCode,myName]);// eslint-disable-line
@@ -807,7 +793,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     np=[...np,...dropping];
     const newHand=[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew];
     const next=(turnIdx+1)%activePlayers.length;
-    // Optimistic: clear selection immediately so UI feels instant
+    // Optimistic: clear UI instantly so it feels fast
     clearInterval(timerRef.current);
     setDrawFrom(null);setDropIdxs([]);
     // Then push to Firebase — SSE broadcasts to others in <200ms
@@ -816,7 +802,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 
   async function doShow(){
     if(!isMyTurn)return;
-    clearInterval(timerRef.current);setShowContinue(false);
+    clearInterval(timerRef.current);
     const wc=wildCard||null,pen=penalty||50;
     const results=activePlayers.map(n=>({name:n,hand:hands[n]||[],pts:handTotal(hands[n]||[],wc)}));
     const clPts=handTotal(myHand,wc),lowPts=Math.min(...results.map(r=>r.pts));
@@ -837,7 +823,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const ap=gs.activePlayers,nr=(round||1)+1,allP=gs.allPlayers||ap;
     const d=shuffle(makeDeck()),wc=d[0],dr=d.slice(1);
     const h={};let cur=0;for(const n of ap){h[n]=dr.slice(cur,cur+5);cur+=5;}
-    // PUT is faster than PATCH for full gameState replacement
+    // PUT is faster than PATCH for full gameState replacement (new round = new everything)
     await dbSet(`rooms/${roomCode}/gameState`,{
       stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,
       turnIdx:nr%ap.length,round:nr,roundResult:null,
