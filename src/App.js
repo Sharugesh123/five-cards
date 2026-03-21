@@ -3,10 +3,85 @@ import { useState, useEffect, useRef, useCallback, memo } from "react";
 
 // ── Firebase REST helpers ──────────────────────────────────────────────────────
 const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
-async function dbSet(key,data){const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!r.ok)throw new Error(`Write ${r.status}`);return r.json();}
-async function dbGet(key){const r=await fetch(`${FB}/${key}.json`);if(!r.ok)throw new Error(`Read ${r.status}`);return r.json();}
-async function dbMerge(key,u){const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});if(!r.ok)throw new Error(`Merge ${r.status}`);return r.json();}
-function dbListen(key,cb){let stopped=false,lastJson=null;async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)setTimeout(poll,1500);}poll();return()=>{stopped=true;};}
+
+async function dbSet(key,data){
+  const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+  if(!r.ok)throw new Error(`Write ${r.status}`);
+  return r.json();
+}
+async function dbGet(key){
+  const r=await fetch(`${FB}/${key}.json`);
+  if(!r.ok)throw new Error(`Read ${r.status}`);
+  return r.json();
+}
+async function dbMerge(key,u){
+  const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});
+  if(!r.ok)throw new Error(`Merge ${r.status}`);
+  return r.json();
+}
+
+// ── Real-time listener using Firebase SSE streaming ───────────────────────────
+// Firebase Realtime DB supports Server-Sent Events: instant push, no polling lag.
+// Falls back to 800ms polling if SSE fails (older browsers/firewalls).
+function dbListen(key,cb){
+  let stopped=false;
+  let es=null;
+  let fallbackTimer=null;
+  let lastJson=null;
+
+  // Try SSE first — gives instant <100ms updates
+  function startSSE(){
+    try{
+      es=new EventSource(`${FB}/${key}.json?accept=text%2Fevent-stream`);
+      es.addEventListener('put',e=>{
+        if(stopped)return;
+        try{
+          const d=JSON.parse(e.data);
+          // Firebase SSE put event: {path,data}
+          // path "/" means full value
+          const val=d.path==="/"?d.data:null;
+          if(val!==null)cb(val);
+        }catch(_){}
+      });
+      es.addEventListener('patch',e=>{
+        // On patch we do a quick GET to get full value
+        if(stopped)return;
+        dbGet(key).then(v=>{if(!stopped&&v)cb(v);}).catch(()=>{});
+      });
+      es.onerror=()=>{
+        // SSE failed — close and fall back to fast polling
+        if(es){es.close();es=null;}
+        if(!stopped)startFallback();
+      };
+    }catch(_){
+      startFallback();
+    }
+  }
+
+  // Fallback: fast 800ms polling (still 2x faster than before)
+  function startFallback(){
+    async function poll(){
+      if(stopped)return;
+      try{
+        const r=await fetch(`${FB}/${key}.json`);
+        if(r.ok){
+          const t=await r.text();
+          if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}
+        }
+      }catch(_){}
+      if(!stopped)fallbackTimer=setTimeout(poll,800);
+    }
+    poll();
+  }
+
+  startSSE();
+
+  return()=>{
+    stopped=true;
+    if(es){es.close();es=null;}
+    if(fallbackTimer)clearTimeout(fallbackTimer);
+  };
+}
 
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
@@ -537,6 +612,8 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
 
   function listenToRoom(c){
     if(unsubRef.current)unsubRef.current();
+    // Fetch immediately so lobby shows without waiting for first SSE event
+    dbGet(`rooms/${c}`).then(data=>{if(data){setRoom(data);if(data.started)onStart(data.players,data.scoreLimit,c,nameRef.current.trim());}}).catch(()=>{});
     unsubRef.current=dbListen(`rooms/${c}`,data=>{
       if(!data)return;
       setRoom(data);
@@ -704,21 +781,26 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   function toggleDrop(idx){if(!isMyTurn)return;setDropIdxs(p=>{if(p.includes(idx))return p.filter(i=>i!==idx);if(p.length>0&&myHand[p[0]].rank!==myHand[idx].rank){setMsg("Same rank only for multi-drop!");return p;}return[...p,idx];});}
 
   async function doSwap(){
-    if(!drawFrom||!dropIdxs.length)return;
+    if(!isMyTurn||!drawFrom||!dropIdxs.length)return;
     const dropping=dropIdxs.map(i=>myHand[i]);
     let drew,ns=[...stock],np=[...pile];
-    if(drawFrom==="stock"){drew=stock[0];ns=stock.slice(1);}
-    else{drew=pile[pile.length-1];np=pile.slice(0,-1);}
+    if(drawFrom==="stock"){if(!stock?.length)return;drew=stock[0];ns=stock.slice(1);}
+    else{if(!pile?.length)return;drew=pile[pile.length-1];np=pile.slice(0,-1);}
     np=[...np,...dropping];
-    clearInterval(timerRef.current);setShowContinue(false);
+    const newHand=[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew];
     const next=(turnIdx+1)%activePlayers.length;
-    await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew]},turnIdx:next,lastAction:Date.now()});
+    // Optimistic: clear UI immediately so it feels instant
+    clearInterval(timerRef.current);setShowContinue(false);
     setDrawFrom(null);setDropIdxs([]);
+    // Push to Firebase (SSE will broadcast to others instantly)
+    await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:newHand},turnIdx:next,lastAction:Date.now()});
   }
 
   async function doShow(){
     if(!isMyTurn)return;
     clearInterval(timerRef.current);setShowContinue(false);
+    // Prevent double-tap by clearing turn immediately
+    prevTurnRef.current="__done__";
     const wc=wildCard||null,pen=penalty||50;
     const results=activePlayers.map(n=>({name:n,hand:hands[n]||[],pts:handTotal(hands[n]||[],wc)}));
     const clPts=handTotal(myHand,wc),lowPts=Math.min(...results.map(r=>r.pts));
@@ -739,7 +821,15 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const ap=gs.activePlayers,nr=(round||1)+1,allP=gs.allPlayers||ap;
     const d=shuffle(makeDeck()),wc=d[0],dr=d.slice(1);
     const h={};let cur=0;for(const n of ap){h[n]=dr.slice(cur,cur+5);cur+=5;}
-    await pushGs({stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,turnIdx:nr%ap.length,round:nr,roundResult:null,lastAction:Date.now(),allPlayers:allP});
+    // Use PUT (full replace) for new round — faster than PATCH for large objects
+    await dbSet(`rooms/${roomCode}/gameState`,{
+      ...gs,
+      stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,
+      turnIdx:nr%ap.length,round:nr,roundResult:null,
+      lastAction:Date.now(),allPlayers:allP,
+      scores:gs.scores,eliminated:gs.eliminated,activePlayers:ap,
+      gameWinner:null,
+    });
   }
 
   if(gameWinner)return<GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
