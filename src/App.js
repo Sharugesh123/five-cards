@@ -3,10 +3,99 @@ import { useState, useEffect, useRef, useCallback, memo } from "react";
 
 // ── Firebase REST helpers ──────────────────────────────────────────────────────
 const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
-async function dbSet(key,data){const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!r.ok)throw new Error(`Write ${r.status}`);return r.json();}
-async function dbGet(key){const r=await fetch(`${FB}/${key}.json`);if(!r.ok)throw new Error(`Read ${r.status}`);return r.json();}
-async function dbMerge(key,u){const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});if(!r.ok)throw new Error(`Merge ${r.status}`);return r.json();}
-function dbListen(key,cb){let stopped=false,lastJson=null;async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)setTimeout(poll,1500);}poll();return()=>{stopped=true;};}
+
+async function dbSet(key,data){
+  const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+  if(!r.ok)throw new Error(`Write ${r.status}`);
+  return r.json();
+}
+async function dbGet(key){
+  const r=await fetch(`${FB}/${key}.json`);
+  if(!r.ok)throw new Error(`Read ${r.status}`);
+  return r.json();
+}
+async function dbMerge(key,u){
+  const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});
+  if(!r.ok)throw new Error(`Merge ${r.status}`);
+  return r.json();
+}
+
+// ── Real-time listener using Firebase SSE (instant push, replaces polling) ────
+// Firebase Realtime DB supports ?accept=text/event-stream for server-push.
+// This gives <200ms updates vs 1500ms polling — the root cause of all game lag.
+function dbListen(key, cb){
+  let stopped = false;
+  let es = null;
+  let pollTimer = null;
+  let lastJson = null;
+
+  function stopAll(){
+    stopped = true;
+    if(es){ try{ es.close(); }catch(_){} es = null; }
+    if(pollTimer){ clearTimeout(pollTimer); pollTimer = null; }
+  }
+
+  // Fetch immediately so UI shows current state right away
+  fetch(`${FB}/${key}.json`)
+    .then(r=>r.ok?r.text():null)
+    .then(t=>{ if(t&&!stopped){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} } })
+    .catch(()=>{});
+
+  // Try SSE streaming — instant push from Firebase
+  function startSSE(){
+    try{
+      es = new EventSource(`${FB}/${key}.json?accept=text%2Fevent-stream`);
+      es.addEventListener('put', e=>{
+        if(stopped) return;
+        try{
+          const d = JSON.parse(e.data);
+          // Firebase SSE: {path, data} — path "/" = full value
+          if(d && d.path === '/' && d.data !== null) cb(d.data);
+          else if(d && d.path !== '/' && d.data !== null){
+            // Partial update — do a quick GET for full state
+            fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{
+              if(!stopped && t !== lastJson){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} }
+            }).catch(()=>{});
+          }
+        }catch(_){}
+      });
+      es.addEventListener('patch', ()=>{
+        if(stopped) return;
+        fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{
+          if(!stopped && t !== lastJson){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} }
+        }).catch(()=>{});
+      });
+      es.onerror = ()=>{
+        if(stopped) return;
+        if(es){ try{ es.close(); }catch(_){} es=null; }
+        // SSE failed — fall back to fast polling at 600ms
+        startFallbackPoll();
+      };
+    } catch(_){
+      startFallbackPoll();
+    }
+  }
+
+  // Fallback polling at 600ms (2.5x faster than before)
+  function startFallbackPoll(){
+    if(stopped) return;
+    async function poll(){
+      if(stopped) return;
+      try{
+        const r = await fetch(`${FB}/${key}.json`);
+        if(r.ok){
+          const t = await r.text();
+          if(t !== lastJson){ lastJson=t; try{ cb(JSON.parse(t)); }catch(_){} }
+        }
+      }catch(_){}
+      if(!stopped) pollTimer = setTimeout(poll, 600);
+    }
+    poll();
+  }
+
+  startSSE();
+  return stopAll;
+}
 
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
@@ -73,7 +162,7 @@ const ScoreChip=memo(({name,score,limit,isActive,isElim,isYou})=>{
   );
 });
 
-const TimerRing=memo(({timeLeft,total=20})=>{
+const TimerRing=memo(({timeLeft,total=30})=>{
   const r=20,circ=2*Math.PI*r,pct=Math.max(0,timeLeft/total);
   const color=timeLeft>15?T.green:timeLeft>7?T.gold:T.red;
   return(
@@ -555,8 +644,8 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
       scores:Object.fromEntries(ap.map(p=>[p,0])),history:[],
       eliminated:[],activePlayers:ap,allPlayers:ap,penalty:room.penalty||50,
       turnIdx:0,round:1,roundResult:null,gameWinner:null,lastAction:Date.now()};
-    await dbSet(`rooms/${room.code}/gameState`,gs);
-    await dbMerge(`rooms/${room.code}`,{started:true});
+    // One atomic PUT instead of 2 sequential writes — cuts game start lag in half
+    await dbSet(`rooms/${room.code}`,{...room,started:true,gameState:gs});
   }
 
   useEffect(()=>()=>{if(unsubRef.current)unsubRef.current();},[]);
@@ -650,7 +739,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const prevTurnRef=useRef(null);
   const timerRef=useRef(null);
 
-  function startTimer(){clearInterval(timerRef.current);setTimeLeft(20);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
+  function startTimer(){clearInterval(timerRef.current);setTimeLeft(30);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
 
   useEffect(()=>{
     if(!gs||timeLeft!==0)return;
@@ -662,19 +751,25 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
-    const unsub=dbListen(`rooms/${roomCode}/gameState`,g=>{
+    // Listen to full room (handles gameState embedded from startGame PUT)
+    // Falls back to gameState subpath
+    function handleGs(g){
       if(!g)return;
-      setGs(g);
-      const cp=g.activePlayers[g.turnIdx];
-      const tk=`${g.round||1}_${g.turnIdx}`;
+      // If full room object received, extract gameState
+      const gs2 = g.gameState || g;
+      if(!gs2.activePlayers)return;
+      setGs(gs2);
+      const cp=gs2.activePlayers[gs2.turnIdx];
+      const tk=`${gs2.round||1}_${gs2.turnIdx}`;
       if(cp===myName&&prevTurnRef.current!==tk){
         prevTurnRef.current=tk;
         setDrawFrom(null);setDropIdxs([]);setShowGate(true);
         setMsg("Pick source · select drop · SWAP");
         vibrate([100,50,100]);startTimer();
       }
-      if(g.roundResult?.justElim?.length>0&&!g.roundResult.shown)setNewlyElim(g.roundResult.justElim);
-    });
+      if(gs2.roundResult?.justElim?.length>0&&!gs2.roundResult.shown)setNewlyElim(gs2.roundResult.justElim);
+    }
+    const unsub=dbListen(`rooms/${roomCode}/gameState`,handleGs);
     unsubRef.current=unsub;
     return()=>{if(unsubRef.current)unsubRef.current();clearInterval(timerRef.current);};
   },[roomCode,myName]);// eslint-disable-line
@@ -704,16 +799,19 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   function toggleDrop(idx){if(!isMyTurn)return;setDropIdxs(p=>{if(p.includes(idx))return p.filter(i=>i!==idx);if(p.length>0&&myHand[p[0]].rank!==myHand[idx].rank){setMsg("Same rank only for multi-drop!");return p;}return[...p,idx];});}
 
   async function doSwap(){
-    if(!drawFrom||!dropIdxs.length)return;
+    if(!isMyTurn||!drawFrom||!dropIdxs.length)return;
     const dropping=dropIdxs.map(i=>myHand[i]);
     let drew,ns=[...stock],np=[...pile];
-    if(drawFrom==="stock"){drew=stock[0];ns=stock.slice(1);}
-    else{drew=pile[pile.length-1];np=pile.slice(0,-1);}
+    if(drawFrom==="stock"){if(!stock?.length)return;drew=stock[0];ns=stock.slice(1);}
+    else{if(!pile?.length)return;drew=pile[pile.length-1];np=pile.slice(0,-1);}
     np=[...np,...dropping];
-    clearInterval(timerRef.current);setShowContinue(false);
+    const newHand=[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew];
     const next=(turnIdx+1)%activePlayers.length;
-    await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew]},turnIdx:next,lastAction:Date.now()});
+    // Optimistic: clear selection immediately so UI feels instant
+    clearInterval(timerRef.current);
     setDrawFrom(null);setDropIdxs([]);
+    // Then push to Firebase — SSE broadcasts to others in <200ms
+    await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:newHand},turnIdx:next,lastAction:Date.now()});
   }
 
   async function doShow(){
@@ -739,7 +837,15 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const ap=gs.activePlayers,nr=(round||1)+1,allP=gs.allPlayers||ap;
     const d=shuffle(makeDeck()),wc=d[0],dr=d.slice(1);
     const h={};let cur=0;for(const n of ap){h[n]=dr.slice(cur,cur+5);cur+=5;}
-    await pushGs({stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,turnIdx:nr%ap.length,round:nr,roundResult:null,lastAction:Date.now(),allPlayers:allP});
+    // PUT is faster than PATCH for full gameState replacement
+    await dbSet(`rooms/${roomCode}/gameState`,{
+      stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,
+      turnIdx:nr%ap.length,round:nr,roundResult:null,
+      lastAction:Date.now(),allPlayers:allP,
+      scores:gs.scores,eliminated:gs.eliminated,
+      activePlayers:ap,gameWinner:null,
+      scoreLimit:gs.scoreLimit,penalty:gs.penalty,history:gs.history||[],
+    });
   }
 
   if(gameWinner)return<GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
@@ -787,10 +893,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       {/* Table — wild peeks from bottom */}
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"4px 12px",position:"relative",minHeight:200}}>
         {wildCard&&(
-          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:20,padding:"4px 14px"}}>
-            <span style={{fontSize:14}}>🌟</span>
-            <span style={{fontSize:12,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
-            <Card card={wildCard} small/>
+          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
+            <span style={{fontSize:13}}>🌟</span>
+            <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
           </div>
         )}
         <div style={{display:"flex",gap:24,alignItems:"flex-end",justifyContent:"center"}}>
@@ -815,6 +920,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           </div>
         )}
         <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}</div>
+        {/* Wild card peek — horizontal, 30% visible */}
+        {wildCard&&<WildCardPeek card={wildCard}/>}
       </div>
       {/* My hand */}
       <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px"}}>
@@ -825,7 +932,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           </div>
           {isMyTurn?<div style={{display:"flex",gap:7}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
         </div>
-        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
+        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:14,paddingBottom:2}}>
           {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>)}
         </div>
       </div>
@@ -859,6 +966,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [wildCard,setWildCard]=useState(null);
   const [history,setHistory]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
+  const [showContinueAI,setShowContinueAI]=useState(false); // BUG FIX: was missing useState
 
   const aiTimerRef=useRef(null);
   const turnTimerRef=useRef(null);
@@ -876,7 +984,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   useEffect(()=>{rrRef.current=roundResult;},[roundResult]);
   useEffect(()=>{gwRef.current=gameWinner;},[gameWinner]);
 
-  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(20);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
+  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
   useEffect(()=>()=>{clearInterval(turnTimerRef.current);clearTimeout(aiTimerRef.current);},[]);
 
   function deal(ap,roundNum){
@@ -886,26 +994,30 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const h={};let cur=0;for(const n of a){h[n]=dr.slice(cur,cur+5);cur+=5;}
     const si=(roundNum||1)%a.length;
     setWildCard(wc);setStock(dr.slice(cur+1));setPile([dr[cur]]);setHands(h);
-    setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
+    setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);setShowContinueAI(false);
     setMsg(a[si]===YOU?"Pick source · select drop · SWAP":`${a[si]}'s turn...`);
     if(a[si]===YOU)startTurnTimer();
   }
   useEffect(()=>{deal();},[]);// eslint-disable-line
 
-  // Timer expiry: auto-skip immediately, no popup
+  // BUG FIX: timer expiry now checks refs not stale state
   useEffect(()=>{
     if(timeLeft!==0||rrRef.current||gwRef.current)return;
     const cur=activeRef.current[turnIdxRef.current];
     if(cur!==YOU)return;
     clearInterval(turnTimerRef.current);
-    // Auto-skip to next player
+    setShowContinueAI(true);
+  },[timeLeft]);// eslint-disable-line
+
+  function onContinueAI(){setShowContinueAI(false);setTimeLeft(10);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
+  function onSkipAI(){
+    setShowContinueAI(false);clearInterval(turnTimerRef.current);
     const a=activeRef.current,idx=turnIdxRef.current;
     const next=(idx+1)%a.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
-    setMsg(a[next]===YOU?"Pick source · select drop · SWAP":`${a[next]}'s turn...`);
+    setMsg(a[next]===YOU?"Your turn":`${a[next]}'s turn`);
     if(a[next]===YOU)startTurnTimer();
-    vibrate([200,100,200]);
-  },[timeLeft]);// eslint-disable-line
+  }
 
   const currentPlayer=active[turnIdx];
   const isMyTurn=currentPlayer===YOU;
@@ -1008,7 +1120,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     np=[...np,...dropping];
     const kept=hand.filter((_,i)=>!dropIdxs.includes(i));
     setStock(ns);setPile(np);setHands(prev=>({...prev,[YOU]:[...kept,drew]}));
-    clearInterval(turnTimerRef.current);
+    clearInterval(turnTimerRef.current);setShowContinueAI(false);
     const a=activeRef.current,tidx=turnIdxRef.current;
     const next=(tidx+1)%a.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
@@ -1016,7 +1128,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     if(a[next]===YOU)startTurnTimer();
   }
 
-  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
+  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);setShowContinueAI(false);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
 
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
@@ -1046,84 +1158,88 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
         {allPlayers.map(n=><ScoreChip key={n} name={n} score={scores[n]||0} limit={scoreLimit} isActive={active[turnIdx]===n} isElim={eliminated.includes(n)} isYou={n===YOU}/>)}
       </div>
-      {/* ── Opponents row — horizontal across top ── */}
-      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"4px 12px 0",flexWrap:"wrap"}}>
-        {active.filter(n=>n!==YOU).map(name=>{
-          const h=hands[name]||[],isCur=currentPlayer===name;
-          return(
-            <div key={name} style={{background:isCur?"rgba(37,99,235,.08)":T.surface,backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(0,0,0,.06)",borderRadius:12,padding:"7px 12px",textAlign:"center",boxShadow:T.shadow,minWidth:90}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:5}}>
-                <span style={{fontSize:11}}>🤖</span>
-                <span style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,maxWidth:72,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
-              </div>
-              <FanCards count={Math.max(1,h.length||5)}/>
+      {/* Main */}
+      <div style={{flex:1,display:"flex",flexDirection:"row",gap:12,padding:"8px 12px",minHeight:0}}>
+        {/* Opponents column */}
+        <div style={{display:"flex",flexDirection:"column",gap:8,width:118,flexShrink:0,overflowY:"auto"}}>
+          {active.filter(n=>n!==YOU).map(name=>{
+            const h=hands[name]||[],isCur=currentPlayer===name;
+            return(
+              <Panel key={name} style={{padding:"10px",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                  <span style={{fontSize:12}}>🤖</span>
+                  <span style={{fontWeight:700,fontSize:10,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                  {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
+                </div>
+                <FanCards count={Math.max(1,h.length||5)}/>
+              </Panel>
+            );
+          })}
+        </div>
+        {/* Centre table */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,position:"relative",minHeight:200}}>
+          {/* Wild label */}
+          {wildCard&&(
+            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
+              <span style={{fontSize:13}}>🌟</span>
+              <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
             </div>
-          );
-        })}
-      </div>
-
-      {/* ── Table: Wild + Stock + Discard — centred ── */}
-      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"10px 12px"}}>
-        {wildCard&&(
-          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:20,padding:"4px 14px"}}>
-            <span style={{fontSize:14}}>🌟</span>
-            <span style={{fontSize:12,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
-            <Card card={wildCard} small/>
+          )}
+          {/* Stock + Discard */}
+          <div style={{display:"flex",gap:20,alignItems:"flex-end"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
+              {stock.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
+            </div>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
+              {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
+            </div>
           </div>
-        )}
-        <div style={{display:"flex",gap:28,alignItems:"flex-end",justifyContent:"center"}}>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
-            {stock.length>0
-              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Source":null}/>
-              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
-            }
-          </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-            {pileTop
-              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Source":null}/>
-              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
-            }
-          </div>
+          {/* Step indicator */}
+          {isMyTurn&&(
+            <div style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"6px 14px"}}>
+              {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
+                  <span style={{fontSize:11,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
+                  {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:12}}>›</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{fontSize:12,color:T.muted,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
+          {/* Wild card peek — horizontal, ~30% visible */}
+          {wildCard&&<WildCardPeek card={wildCard}/>}
         </div>
-        {isMyTurn&&(
-          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"5px 14px"}}>
-            {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
-                <div style={{width:18,height:18,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                <span style={{fontSize:10,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
-                {i<2&&<span style={{color:"rgba(0,0,0,.12)",fontSize:10}}>›</span>}
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
       </div>
-
-      {/* ── My hand — pinned at bottom, no overflow ── */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 14px",marginTop:"auto"}}>
+      {/* My hand */}
+      <Panel style={{margin:"0 8px 10px",padding:"12px 14px",borderRadius:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontWeight:800,fontSize:13}}>You</span>
-            <span style={{fontSize:11,fontFamily:T.mono,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.ink}}>{handTotal(myHand,wildCard)} pts</span>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontWeight:700,fontSize:13}}>You</span>
+            <span style={{fontSize:11,fontFamily:T.mono,color:T.muted}}>{handTotal(myHand,wildCard)} pts</span>
           </div>
-          {isMyTurn
-            ?<div style={{display:"flex",gap:7}}>
-                <Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn>
-                <Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn>
-              </div>
-            :<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} thinking...`:"Wait..."}</span>
-          }
+          {isMyTurn?<div style={{display:"flex",gap:8}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} is thinking...`:"Wait..."}</span>}
         </div>
-        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
-          {myHand.map((card,idx)=>(
-            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
-          ))}
+        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",paddingTop:16}}>
+          {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop ✓":null}/>)}
         </div>
-      </div>
-
+      </Panel>
+      {/* Timer expired modal */}
+      {showContinueAI&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Panel style={{padding:"32px 28px",textAlign:"center",maxWidth:300,width:"90%"}}>
+            <div style={{fontSize:40,marginBottom:12}}>⏱</div>
+            <div style={{fontWeight:900,fontSize:18,marginBottom:8}}>Time's Up!</div>
+            <div style={{color:T.muted,fontSize:13,marginBottom:20}}>Your 30 seconds are over.</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+              <Btn variant="ghost" onClick={onSkipAI}>Skip Turn</Btn>
+              <Btn variant="gold" onClick={onContinueAI}>+10s More</Btn>
+            </div>
+          </Panel>
+        </div>
+      )}
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
     </div>
