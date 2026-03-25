@@ -6,22 +6,7 @@ const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
 async function dbSet(key,data){const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!r.ok)throw new Error(`Write ${r.status}`);return r.json();}
 async function dbGet(key){const r=await fetch(`${FB}/${key}.json`);if(!r.ok)throw new Error(`Read ${r.status}`);return r.json();}
 async function dbMerge(key,u){const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});if(!r.ok)throw new Error(`Merge ${r.status}`);return r.json();}
-function dbListen(key,cb){
-  let stopped=false,lastJson=null,es=null,pollTimer=null;
-  function stopAll(){stopped=true;if(es){try{es.close();}catch(_){}es=null;}if(pollTimer){clearTimeout(pollTimer);pollTimer=null;}}
-  fetch(`${FB}/${key}.json`).then(r=>r.ok?r.text():null).then(t=>{if(t&&!stopped){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}).catch(()=>{});
-  function startSSE(){
-    try{
-      es=new EventSource(`${FB}/${key}.json?accept=text%2Fevent-stream`);
-      es.addEventListener('put',ev=>{if(stopped)return;try{const d=JSON.parse(ev.data);if(d&&d.path==='/'&&d.data!==null){lastJson=JSON.stringify(d.data);cb(d.data);}else if(d&&d.path!=='/'&&d.data!==null){fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{if(!stopped&&t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}).catch(()=>{});}}catch(_){}});
-      es.addEventListener('patch',()=>{if(stopped)return;fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{if(!stopped&&t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}).catch(()=>{});});
-      es.onerror=()=>{if(stopped)return;if(es){try{es.close();}catch(_){}es=null;}startFallback();};
-    }catch(_){startFallback();}
-  }
-  function startFallback(){async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)pollTimer=setTimeout(poll,700);}poll();}
-  startSSE();
-  return stopAll;
-}
+function dbListen(key,cb){let stopped=false,lastJson=null;async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)setTimeout(poll,1500);}poll();return()=>{stopped=true;};}
 
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
@@ -46,11 +31,6 @@ const SUITS=["♠","♥","♦","♣"];
 const RANKS=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
 const RANK_PTS={A:1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,J:10,Q:10,K:10};
 const AI_NAMES=["Anu","Priya","Rajan","Kumar","Devi","Siva","mani","Arun","Lakshmi","Vikram","Nisha","Rahul","Sunita","Amit","Kavya","Rohit","Meera","Sanjay","Pooja","Vishal","Sneha"];
-
-// ── Donkey game constants ─────────────────────────────────────────────────────
-const D_RANK_VAL={A:14,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,"10":10,J:11,Q:12,K:13};
-function dRankVal(r){return D_RANK_VAL[r]||0;}
-function makeDonkeyDeck(){const d=[];for(const s of SUITS)for(const r of RANKS)d.push({suit:s,rank:r,val:D_RANK_VAL[r],id:`${r}-${s}`});return d;}
 
 function genCode(){return Math.random().toString(36).substring(2,7).toUpperCase();}
 function makeDeck(){const d=[];for(const s of SUITS)for(const r of RANKS)d.push({suit:s,rank:r,pts:RANK_PTS[r],id:`${r}-${s}`});return d;}
@@ -93,7 +73,7 @@ const ScoreChip=memo(({name,score,limit,isActive,isElim,isYou})=>{
   );
 });
 
-const TimerRing=memo(({timeLeft,total=30})=>{
+const TimerRing=memo(({timeLeft,total=20})=>{
   const r=20,circ=2*Math.PI*r,pct=Math.max(0,timeLeft/total);
   const color=timeLeft>15?T.green:timeLeft>7?T.gold:T.red;
   return(
@@ -399,7 +379,7 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
 }
 
 // ── Home Screen ───────────────────────────────────────────────────────────────
-function HomeScreen({onPlayAI,onPlayFriends,onBack}){
+function HomeScreen({onPlayAI,onPlayFriends}){
   const [players,setPlayers]=useState(2);
   const [limit,setLimit]=useState(300);
   const [limInput,setLimInput]=useState("300");
@@ -414,10 +394,8 @@ function HomeScreen({onPlayAI,onPlayFriends,onBack}){
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px",overflowX:"hidden"}}>
       <style>{BASE_CSS}</style>
 
-      {/* Back */}
-      {onBack&&<button onClick={onBack} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font,padding:"12px 0 0",alignSelf:"flex-start"}}>← Games</button>}
       {/* Hero */}
-      <div style={{textAlign:"center",padding:"32px 0 28px"}}>
+      <div style={{textAlign:"center",padding:"48px 0 32px"}}>
         <div style={{fontSize:56,marginBottom:8,animation:"pop .5s both"}}>🃏</div>
         <h1 style={{fontWeight:900,fontSize:38,color:T.ink,margin:0,letterSpacing:-2,lineHeight:1}}>5 CARDS</h1>
         <p style={{fontSize:11,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"8px 0 0"}}>Swap · Claim · Survive</p>
@@ -672,7 +650,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const prevTurnRef=useRef(null);
   const timerRef=useRef(null);
 
-  function startTimer(){clearInterval(timerRef.current);setTimeLeft(30);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
+  function startTimer(){clearInterval(timerRef.current);setTimeLeft(20);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
 
   useEffect(()=>{
     if(!gs||timeLeft!==0)return;
@@ -809,9 +787,10 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       {/* Table — wild peeks from bottom */}
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"4px 12px",position:"relative",minHeight:200}}>
         {wildCard&&(
-          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
-            <span style={{fontSize:13}}>🌟</span>
-            <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:20,padding:"4px 14px"}}>
+            <span style={{fontSize:14}}>🌟</span>
+            <span style={{fontSize:12,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+            <Card card={wildCard} small/>
           </div>
         )}
         <div style={{display:"flex",gap:24,alignItems:"flex-end",justifyContent:"center"}}>
@@ -836,8 +815,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           </div>
         )}
         <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}</div>
-        {/* Wild card peek — horizontal, 30% visible */}
-        {wildCard&&<WildCardPeek card={wildCard}/>}
       </div>
       {/* My hand */}
       <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px"}}>
@@ -848,7 +825,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           </div>
           {isMyTurn?<div style={{display:"flex",gap:7}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
         </div>
-        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:14,paddingBottom:2}}>
+        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
           {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>)}
         </div>
       </div>
@@ -882,7 +859,6 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [wildCard,setWildCard]=useState(null);
   const [history,setHistory]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
-  const [showContinueAI,setShowContinueAI]=useState(false); // BUG FIX: was missing useState
 
   const aiTimerRef=useRef(null);
   const turnTimerRef=useRef(null);
@@ -900,7 +876,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   useEffect(()=>{rrRef.current=roundResult;},[roundResult]);
   useEffect(()=>{gwRef.current=gameWinner;},[gameWinner]);
 
-  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
+  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(20);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
   useEffect(()=>()=>{clearInterval(turnTimerRef.current);clearTimeout(aiTimerRef.current);},[]);
 
   function deal(ap,roundNum){
@@ -910,30 +886,26 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const h={};let cur=0;for(const n of a){h[n]=dr.slice(cur,cur+5);cur+=5;}
     const si=(roundNum||1)%a.length;
     setWildCard(wc);setStock(dr.slice(cur+1));setPile([dr[cur]]);setHands(h);
-    setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);setShowContinueAI(false);
+    setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
     setMsg(a[si]===YOU?"Pick source · select drop · SWAP":`${a[si]}'s turn...`);
     if(a[si]===YOU)startTurnTimer();
   }
   useEffect(()=>{deal();},[]);// eslint-disable-line
 
-  // BUG FIX: timer expiry now checks refs not stale state
+  // Timer expiry: auto-skip immediately, no popup
   useEffect(()=>{
     if(timeLeft!==0||rrRef.current||gwRef.current)return;
     const cur=activeRef.current[turnIdxRef.current];
     if(cur!==YOU)return;
     clearInterval(turnTimerRef.current);
-    setShowContinueAI(true);
-  },[timeLeft]);// eslint-disable-line
-
-  function onContinueAI(){setShowContinueAI(false);setTimeLeft(10);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
-  function onSkipAI(){
-    setShowContinueAI(false);clearInterval(turnTimerRef.current);
+    // Auto-skip to next player
     const a=activeRef.current,idx=turnIdxRef.current;
     const next=(idx+1)%a.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
-    setMsg(a[next]===YOU?"Your turn":`${a[next]}'s turn`);
+    setMsg(a[next]===YOU?"Pick source · select drop · SWAP":`${a[next]}'s turn...`);
     if(a[next]===YOU)startTurnTimer();
-  }
+    vibrate([200,100,200]);
+  },[timeLeft]);// eslint-disable-line
 
   const currentPlayer=active[turnIdx];
   const isMyTurn=currentPlayer===YOU;
@@ -1036,7 +1008,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     np=[...np,...dropping];
     const kept=hand.filter((_,i)=>!dropIdxs.includes(i));
     setStock(ns);setPile(np);setHands(prev=>({...prev,[YOU]:[...kept,drew]}));
-    clearInterval(turnTimerRef.current);setShowContinueAI(false);
+    clearInterval(turnTimerRef.current);
     const a=activeRef.current,tidx=turnIdxRef.current;
     const next=(tidx+1)%a.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
@@ -1044,7 +1016,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     if(a[next]===YOU)startTurnTimer();
   }
 
-  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);setShowContinueAI(false);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
+  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
 
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
@@ -1074,775 +1046,113 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
         {allPlayers.map(n=><ScoreChip key={n} name={n} score={scores[n]||0} limit={scoreLimit} isActive={active[turnIdx]===n} isElim={eliminated.includes(n)} isYou={n===YOU}/>)}
       </div>
-      {/* Main */}
-      <div style={{flex:1,display:"flex",flexDirection:"row",gap:12,padding:"8px 12px",minHeight:0}}>
-        {/* Opponents column */}
-        <div style={{display:"flex",flexDirection:"column",gap:8,width:118,flexShrink:0,overflowY:"auto"}}>
-          {active.filter(n=>n!==YOU).map(name=>{
-            const h=hands[name]||[],isCur=currentPlayer===name;
-            return(
-              <Panel key={name} style={{padding:"10px",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
-                  <span style={{fontSize:12}}>🤖</span>
-                  <span style={{fontWeight:700,fontSize:10,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                  {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
-                </div>
-                <FanCards count={Math.max(1,h.length||5)}/>
-              </Panel>
-            );
-          })}
-        </div>
-        {/* Centre table */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,position:"relative",minHeight:200}}>
-          {/* Wild label */}
-          {wildCard&&(
-            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
-              <span style={{fontSize:13}}>🌟</span>
-              <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+      {/* ── Opponents row — horizontal across top ── */}
+      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"4px 12px 0",flexWrap:"wrap"}}>
+        {active.filter(n=>n!==YOU).map(name=>{
+          const h=hands[name]||[],isCur=currentPlayer===name;
+          return(
+            <div key={name} style={{background:isCur?"rgba(37,99,235,.08)":T.surface,backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(0,0,0,.06)",borderRadius:12,padding:"7px 12px",textAlign:"center",boxShadow:T.shadow,minWidth:90}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:5}}>
+                <span style={{fontSize:11}}>🤖</span>
+                <span style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,maxWidth:72,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
+              </div>
+              <FanCards count={Math.max(1,h.length||5)}/>
             </div>
-          )}
-          {/* Stock + Discard */}
-          <div style={{display:"flex",gap:20,alignItems:"flex-end"}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
-              {stock.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
-            </div>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-              {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
-            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Table: Wild + Stock + Discard — centred ── */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"10px 12px"}}>
+        {wildCard&&(
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:20,padding:"4px 14px"}}>
+            <span style={{fontSize:14}}>🌟</span>
+            <span style={{fontSize:12,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+            <Card card={wildCard} small/>
           </div>
-          {/* Step indicator */}
-          {isMyTurn&&(
-            <div style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"6px 14px"}}>
-              {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:20,height:20,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                  <span style={{fontSize:11,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
-                  {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:12}}>›</span>}
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{fontSize:12,color:T.muted,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
-          {/* Wild card peek — horizontal, ~30% visible */}
-          {wildCard&&<WildCardPeek card={wildCard}/>}
+        )}
+        <div style={{display:"flex",gap:28,alignItems:"flex-end",justifyContent:"center"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
+            {stock.length>0
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Source":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
+            }
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
+            {pileTop
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Source":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
+            }
+          </div>
+        </div>
+        {isMyTurn&&(
+          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"5px 14px"}}>
+            {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:10,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.12)",fontSize:10}}>›</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
+      </div>
+
+      {/* ── My hand — pinned at bottom, no overflow ── */}
+      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 14px",marginTop:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontWeight:800,fontSize:13}}>You</span>
+            <span style={{fontSize:11,fontFamily:T.mono,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.ink}}>{handTotal(myHand,wildCard)} pts</span>
+          </div>
+          {isMyTurn
+            ?<div style={{display:"flex",gap:7}}>
+                <Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn>
+                <Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn>
+              </div>
+            :<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} thinking...`:"Wait..."}</span>
+          }
+        </div>
+        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
+          {myHand.map((card,idx)=>(
+            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
+          ))}
         </div>
       </div>
-      {/* My hand */}
-      <Panel style={{margin:"0 8px 10px",padding:"12px 14px",borderRadius:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontWeight:700,fontSize:13}}>You</span>
-            <span style={{fontSize:11,fontFamily:T.mono,color:T.muted}}>{handTotal(myHand,wildCard)} pts</span>
-          </div>
-          {isMyTurn?<div style={{display:"flex",gap:8}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} is thinking...`:"Wait..."}</span>}
-        </div>
-        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",paddingTop:16}}>
-          {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop ✓":null}/>)}
-        </div>
-      </Panel>
-      {/* Timer expired modal */}
-      {showContinueAI&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <Panel style={{padding:"32px 28px",textAlign:"center",maxWidth:300,width:"90%"}}>
-            <div style={{fontSize:40,marginBottom:12}}>⏱</div>
-            <div style={{fontWeight:900,fontSize:18,marginBottom:8}}>Time's Up!</div>
-            <div style={{color:T.muted,fontSize:13,marginBottom:20}}>Your 30 seconds are over.</div>
-            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <Btn variant="ghost" onClick={onSkipAI}>Skip Turn</Btn>
-              <Btn variant="gold" onClick={onContinueAI}>+10s More</Btn>
-            </div>
-          </Panel>
-        </div>
-      )}
+
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
     </div>
   );
 }
 
-// ── Game Selector ─────────────────────────────────────────────────────────────
-function GameSelector({onSelect}){
-  return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px"}}>
-      <style>{BASE_CSS}</style>
-      <div style={{textAlign:"center",marginBottom:36}}>
-        <div style={{fontSize:48,marginBottom:8}}>🎮</div>
-        <h1 style={{fontWeight:900,fontSize:32,color:T.ink,margin:0,letterSpacing:-1.5}}>GAME HUB</h1>
-        <p style={{fontSize:11,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"6px 0 0"}}>Choose Your Game</p>
-      </div>
-      <div style={{width:"100%",maxWidth:380,display:"flex",flexDirection:"column",gap:14}}>
-        {/* 5 Cards */}
-        <button onClick={()=>onSelect("5cards")} style={{width:"100%",padding:"0",borderRadius:18,border:"none",cursor:"pointer",background:"#fff",boxShadow:"0 4px 20px rgba(37,99,235,.15)",overflow:"hidden",textAlign:"left"}}>
-          <div style={{background:"linear-gradient(135deg,#2563EB,#1d4ed8)",padding:"18px 20px",display:"flex",alignItems:"center",gap:14}}>
-            <span style={{fontSize:36}}>🃏</span>
-            <div>
-              <div style={{fontWeight:900,fontSize:18,color:"#fff",letterSpacing:-.3}}>5 CARDS</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2}}>Swap · Claim · Survive</div>
-            </div>
-            <div style={{marginLeft:"auto",fontSize:22,color:"rgba(255,255,255,.5)"}}>›</div>
-          </div>
-          <div style={{padding:"10px 20px",display:"flex",gap:6}}>
-            {["VS AI","Friends Online","2–6 players","Strategy"].map(t=>(
-              <span key={t} style={{fontSize:10,background:"rgba(37,99,235,.08)",color:T.accent,borderRadius:20,padding:"3px 8px",fontWeight:600}}>{t}</span>
-            ))}
-          </div>
-        </button>
-        {/* Donkey */}
-        <button onClick={()=>onSelect("donkey")} style={{width:"100%",padding:"0",borderRadius:18,border:"none",cursor:"pointer",background:"#fff",boxShadow:"0 4px 20px rgba(245,158,11,.15)",overflow:"hidden",textAlign:"left"}}>
-          <div style={{background:"linear-gradient(135deg,#d97706,#b45309)",padding:"18px 20px",display:"flex",alignItems:"center",gap:14}}>
-            <span style={{fontSize:36}}>🫏</span>
-            <div>
-              <div style={{fontWeight:900,fontSize:18,color:"#fff",letterSpacing:-.3}}>DONKEY</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2}}>Play All Cards · Last = Donkey</div>
-            </div>
-            <div style={{marginLeft:"auto",fontSize:22,color:"rgba(255,255,255,.5)"}}>›</div>
-          </div>
-          <div style={{padding:"10px 20px",display:"flex",gap:6}}>
-            {["VS AI","Friends Online","2–6 players","Trick-taking"].map(t=>(
-              <span key={t} style={{fontSize:10,background:"rgba(245,158,11,.1)",color:T.gold,borderRadius:20,padding:"3px 8px",fontWeight:600}}>{t}</span>
-            ))}
-          </div>
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── App Root ──────────────────────────────────────────────────────────────────
 export default function App(){
-  const [game,setGame]=useState("selector"); // "selector"|"5cards"|"donkey"
   const [screen,setScreen]=useState("home");
   const [config,setConfig]=useState({players:["You","Muthu"],limit:300,penalty:50,roomCode:null,myName:null});
-  const [dScreen,setDScreen]=useState("home"); // donkey screen
-  const [dConfig,setDConfig]=useState({players:["You","Anu","Priya","Kumar"],roomCode:null,myName:null});
-
-  function goHome(){setGame("selector");setScreen("home");setDScreen("home");}
-
   return(
     <>
       <Styles/>
-      {game==="selector"&&<GameSelector onSelect={g=>{setGame(g);setScreen("home");setDScreen("home");}}/>}
-
-      {/* ── 5 CARDS ── */}
-      {game==="5cards"&&screen==="home"&&(
+      {screen==="home"&&(
         <HomeScreen
-          onPlayAI={(n,l,p)=>{setConfig({players:["You",...AI_NAMES.slice(0,n-1)],limit:l,penalty:p||50,roomCode:null,myName:null});setScreen("ai");}}
+          onPlayAI={(n,l,p)=>{
+            setConfig({players:["You",...AI_NAMES.slice(0,n-1)],limit:l,penalty:p||50,roomCode:null,myName:null});
+            setScreen("ai");
+          }}
           onPlayFriends={(l,p)=>{setConfig(prev=>({...prev,limit:l,penalty:p||50}));setScreen("lobby");}}
-          onBack={goHome}
         />
       )}
-      {game==="5cards"&&screen==="lobby"&&(
+      {screen==="lobby"&&(
         <FriendsLobby scoreLimit={config.limit} penalty={config.penalty||50}
           onStart={(players,limit,roomCode,myName)=>{setConfig(p=>({...p,players,limit,roomCode,myName}));setScreen("online");}}
           onBack={()=>setScreen("home")}/>
       )}
-      {game==="5cards"&&screen==="online"&&<OnlineGameScreen roomCode={config.roomCode} myName={config.myName} onQuit={()=>setScreen("home")}/>}
-      {game==="5cards"&&screen==="ai"&&<AIGameScreen players={config.players} scoreLimit={config.limit} penaltyPoints={config.penalty||50} onQuit={()=>setScreen("home")}/>}
-
-      {/* ── DONKEY ── */}
-      {game==="donkey"&&dScreen==="home"&&(
-        <DonkeyHome
-          onPlayAI={n=>{setDConfig({players:["You",...AI_NAMES.slice(0,n-1)],roomCode:null,myName:null});setDScreen("ai");}}
-          onPlayFriends={()=>setDScreen("lobby")}
-          onBack={goHome}
-        />
-      )}
-      {game==="donkey"&&dScreen==="lobby"&&(
-        <DonkeyFriendsLobby
-          onStart={(players,roomCode,myName)=>{setDConfig(p=>({...p,players,roomCode,myName}));setDScreen("online");}}
-          onBack={()=>setDScreen("home")}/>
-      )}
-      {game==="donkey"&&dScreen==="online"&&<DonkeyOnlineScreen roomCode={dConfig.roomCode} myName={dConfig.myName} onQuit={()=>setDScreen("home")}/>}
-      {game==="donkey"&&dScreen==="ai"&&<DonkeyAIScreen players={dConfig.players} onQuit={()=>setDScreen("home")}/>}
+      {screen==="online"&&<OnlineGameScreen roomCode={config.roomCode} myName={config.myName} onQuit={()=>setScreen("home")}/>}
+      {screen==="ai"&&<AIGameScreen players={config.players} scoreLimit={config.limit} penaltyPoints={config.penalty||50} onQuit={()=>setScreen("home")}/>}
     </>
-  );
-}
-// ════════════════════════════════════════════════════════════════════════════
-// ── DONKEY CARD GAME ────────────────────────────────────────────────────────
-// Rules: 4 players, 13 cards each. Play a card to center pile.
-// Must follow suit if possible. Highest card of led suit takes the pile.
-// First to empty hand wins. Last player holding cards = DONKEY 🫏
-// ════════════════════════════════════════════════════════════════════════════
-
-// ── Donkey: Deal cards to players ──
-function donkeyDeal(players){
-  const deck=shuffle(makeDonkeyDeck());
-  const hands={};
-  const perPlayer=Math.floor(deck.length/players.length);
-  let cur=0;
-  for(const p of players){hands[p]=deck.slice(cur,cur+perPlayer);cur+=perPlayer;}
-  return hands;
-}
-
-// ── Donkey AI: pick best card to play ──
-function donkeyAIPlay(hand,pile,ledSuit){
-  if(!hand||!hand.length)return null;
-  const suitCards=hand.filter(c=>c.suit===ledSuit);
-  const pool=suitCards.length>0?suitCards:hand;
-  // If following suit: play lowest to conserve high cards
-  // If can't follow: play highest card to try to take pile (dump hand)
-  if(suitCards.length>0){
-    return pool.reduce((best,c)=>c.val<best.val?c:best,pool[0]);
-  } else {
-    return pool.reduce((best,c)=>c.val>best.val?c:best,pool[0]);
-  }
-}
-
-// ── Donkey: Determine trick winner ──
-function donkeyTrickWinner(pile,ledSuit){
-  // Only cards matching ledSuit compete; highest wins
-  const competing=pile.filter(e=>e.card.suit===ledSuit);
-  if(!competing.length)return pile[0].player;
-  return competing.reduce((best,e)=>e.card.val>best.card.val?e:best,competing[0]).player;
-}
-
-// ── DonkeyCard component ──
-const DonkeyCard=memo(({card,selected,onClick,faceDown,small})=>{
-  if(!card)return null;
-  const W=small?44:62,H=small?62:88;
-  const isRed=card.suit==="♥"||card.suit==="♦";
-  const sc=isRed?T.suit_r:T.suit_b;
-  const bg=faceDown?"linear-gradient(145deg,#7c3aed 0%,#4c1d95 100%)":"#fff";
-  const shadow=selected?"0 0 0 3px #2563EB,0 8px 24px rgba(37,99,235,.4)":T.shadow;
-  const ty=selected?-16:0;
-  return(
-    <div onClick={onClick} style={{width:W,height:H,borderRadius:9,background:bg,border:faceDown?"1px solid rgba(255,255,255,.15)":"1.5px solid rgba(0,0,0,.08)",boxShadow:shadow,transform:`translateY(${ty}px)`,transition:"transform .18s,box-shadow .18s",cursor:onClick?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"space-between",padding:small?"3px 4px":"5px 6px",userSelect:"none",flexShrink:0}}>
-      {faceDown?(
-        <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",opacity:.4}}>
-          {["♠","♥","♦","♣"].map((s,i)=><span key={i} style={{fontSize:10,color:"#fff"}}>{s}</span>)}
-        </div>
-      ):(
-        <>
-          <div style={{fontSize:small?9:12,fontWeight:700,color:sc,fontFamily:T.mono,lineHeight:1}}>{card.rank}<br/><span style={{fontSize:small?8:9}}>{card.suit}</span></div>
-          <div style={{fontSize:small?16:24,textAlign:"center",color:sc,lineHeight:1}}>{card.suit}</div>
-          <div style={{fontSize:small?9:12,fontWeight:700,color:sc,fontFamily:T.mono,lineHeight:1,textAlign:"right",transform:"rotate(180deg)"}}>{card.rank}<br/><span style={{fontSize:small?8:9}}>{card.suit}</span></div>
-        </>
-      )}
-    </div>
-  );
-});
-
-// ── Donkey Home ──
-function DonkeyHome({onPlayAI,onPlayFriends,onBack}){
-  const [players,setPlayers]=useState(4);
-  return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px"}}>
-      <style>{BASE_CSS}</style>
-      <div style={{textAlign:"center",padding:"40px 0 28px"}}>
-        <div style={{fontSize:52,marginBottom:6}}>🫏</div>
-        <h1 style={{fontWeight:900,fontSize:34,color:T.ink,margin:0,letterSpacing:-1.5}}>DONKEY</h1>
-        <p style={{fontSize:11,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"6px 0 0"}}>Play All Cards · Last = Donkey</p>
-      </div>
-      <div style={{width:"100%",maxWidth:380}}>
-        {/* Rules summary */}
-        <div style={{background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"14px 16px",marginBottom:20,boxShadow:T.shadow}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>How to Play</div>
-          {[["🃏","Play a card each turn to the centre pile"],["♠","Must follow the led suit if you can"],["👑","Highest card of led suit wins the trick & leads next"],["🏃","Empty your hand to escape — last with cards = Donkey!"]].map(([e,t])=>(
-            <div key={e} style={{display:"flex",gap:8,marginBottom:6,alignItems:"flex-start"}}>
-              <span style={{fontSize:14,flexShrink:0}}>{e}</span>
-              <span style={{fontSize:12,color:T.muted,lineHeight:1.4}}>{t}</span>
-            </div>
-          ))}
-        </div>
-        {/* Players */}
-        <p style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1.5,textTransform:"uppercase",marginBottom:10}}>🤖 Players (vs AI)</p>
-        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:14}}>
-          {[2,3,4,5,6].map(n=>(
-            <button key={n} onClick={()=>setPlayers(n)} style={{width:46,height:46,borderRadius:12,border:"none",cursor:"pointer",fontSize:17,fontWeight:900,background:players===n?T.accent:"#fff",color:players===n?"#fff":T.ink,boxShadow:players===n?"0 4px 12px rgba(37,99,235,.4)":"0 2px 6px rgba(0,0,0,.08)",transform:players===n?"scale(1.12)":"scale(1)",transition:"all .15s"}}>{n}</button>
-          ))}
-        </div>
-        <p style={{fontSize:11,color:T.muted,textAlign:"center",marginBottom:16}}>{AI_NAMES.slice(0,players-1).join(" · ")}</p>
-        <button onClick={()=>onPlayAI(players)} style={{width:"100%",padding:"15px",borderRadius:14,border:"none",cursor:"pointer",background:T.accent,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,boxShadow:"0 6px 20px rgba(37,99,235,.35)",marginBottom:12}}>▶ Play vs AI</button>
-        <div style={{height:1,background:"rgba(0,0,0,.07)",marginBottom:12}}/>
-        <button onClick={onPlayFriends} style={{width:"100%",padding:"15px",borderRadius:14,border:"none",cursor:"pointer",background:T.green,color:"#fff",fontSize:16,fontWeight:800,fontFamily:T.font,boxShadow:"0 6px 20px rgba(16,185,129,.35)",marginBottom:20}}>🌐 Play with Friends</button>
-        <div style={{textAlign:"center"}}>
-          <button onClick={onBack} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font}}>← Back to Games</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Donkey AI Game Screen ──
-function DonkeyAIScreen({players,onQuit}){
-  const YOU=players[0];
-  const isAI=n=>n!==YOU;
-  const [hands,setHands]=useState(()=>donkeyDeal(players));
-  const [pile,setPile]=useState([]); // [{player,card}]
-  const [ledSuit,setLedSuit]=useState(null);
-  const [turnIdx,setTurnIdx]=useState(0);
-  const [finished,setFinished]=useState([]); // players who emptied hand
-  const [msg,setMsg]=useState("Your turn — play a card");
-  const [selected,setSelected]=useState(null);
-  const [showRules,setShowRules]=useState(false);
-  const [trickAnim,setTrickAnim]=useState(false);
-  const aiRef=useRef(null);
-
-  const active=players.filter(p=>!finished.includes(p)&&(hands[p]||[]).length>0);
-  const currentPlayer=active[turnIdx%active.length];
-  const isMyTurn=currentPlayer===YOU;
-
-  // Check game over
-  useEffect(()=>{
-    if(active.length<=1&&active.length+finished.length===players.length){return;}
-    if((hands[YOU]||[]).length===0&&!finished.includes(YOU)){
-      setFinished(f=>[...f,YOU]);
-      setMsg(`🎉 You escaped! ${active.filter(p=>p!==YOU).length} still playing...`);
-    }
-  },[hands]);
-
-  // AI plays
-  useEffect(()=>{
-    if(!currentPlayer||!isAI(currentPlayer))return;
-    const hand=hands[currentPlayer]||[];
-    if(!hand.length)return;
-    aiRef.current=setTimeout(()=>{
-      const card=donkeyAIPlay(hand,pile,ledSuit);
-      if(card)playCard(currentPlayer,card);
-    },900);
-    return()=>clearTimeout(aiRef.current);
-  },[turnIdx,currentPlayer]);
-
-  function playCard(player,card){
-    const newHand=(hands[player]||[]).filter(c=>c.id!==card.id);
-    const newPile=[...pile,{player,card}];
-    const newLedSuit=pile.length===0?card.suit:ledSuit;
-    setHands(h=>({...h,[player]:newHand}));
-    setPile(newPile);
-    setLedSuit(pile.length===0?card.suit:ledSuit);
-    setSelected(null);
-
-    // Check if all active players have played
-    const nextActive=active.filter(p=>(p===player?newHand.length>0:(hands[p]||[]).length>0));
-    const playersWhoNeedToPlay=active.filter(p=>!newPile.find(e=>e.player===p));
-
-    if(playersWhoNeedToPlay.length===0||newPile.length===active.length){
-      // Trick complete — find winner
-      setTimeout(()=>{
-        const ls=pile.length===0?card.suit:ledSuit;
-        const winner=donkeyTrickWinner(newPile,ls||card.suit);
-        setTrickAnim(true);
-        setTimeout(()=>{
-          setTrickAnim(false);
-          setPile([]);
-          setLedSuit(null);
-          // Remove finished players
-          const nowDone=[...finished];
-          active.forEach(p=>{if((p===player?newHand:hands[p]||[]).length===0&&!nowDone.includes(p))nowDone.push(p);});
-          setFinished(nowDone);
-          const stillActive=active.filter(p=>!(p===player?newHand.length===0:hands[p]?.length===0));
-          if(stillActive.length<=1){
-            setMsg(stillActive.length===1?`🫏 ${stillActive[0]} is the DONKEY!`:"Game over!");
-          } else {
-            const wi=stillActive.indexOf(winner);
-            setTurnIdx(wi>=0?wi:0);
-            setMsg(winner===YOU?"You won the trick! Play again":""+winner+" won the trick");
-          }
-        },1200);
-      },300);
-    } else {
-      // Move to next player
-      const ni=active.indexOf(player);
-      setTurnIdx((ni+1)%active.length);
-      setMsg(active[(ni+1)%active.length]===YOU?"Your turn — play a card":active[(ni+1)%active.length]+" is playing...");
-    }
-  }
-
-  function handlePlay(){
-    if(!isMyTurn||selected===null)return;
-    const card=(hands[YOU]||[])[selected];
-    if(!card)return;
-    // Validate: must follow suit if possible
-    if(ledSuit&&pile.length>0){
-      const hasSuit=(hands[YOU]||[]).some(c=>c.suit===ledSuit);
-      if(hasSuit&&card.suit!==ledSuit){setMsg("⚠️ You must follow the led suit: "+ledSuit);return;}
-    }
-    playCard(YOU,card);
-  }
-
-  const myHand=hands[YOU]||[];
-  const donkey=active.length===1?active[0]:null;
-  const gameOver=active.length<=1&&(finished.length+active.length)===players.length;
-
-  if(gameOver)return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
-      <style>{BASE_CSS}</style>
-      <div style={{textAlign:"center",maxWidth:340}}>
-        <div style={{fontSize:72,marginBottom:12}}>🫏</div>
-        <div style={{fontWeight:900,fontSize:28,marginBottom:6}}>{donkey||active[0]} is the DONKEY!</div>
-        <div style={{color:T.muted,fontSize:14,marginBottom:8}}>Finished order:</div>
-        <div style={{marginBottom:24}}>{finished.map((p,i)=><div key={p} style={{fontSize:14,fontWeight:600,color:i===0?T.green:T.muted,marginBottom:4}}>{i+1}. {p} {i===0?"🏆":""}</div>)}</div>
-        <Btn onClick={onQuit}>← Back</Btn>
-      </div>
-    </div>
-  );
-
-  return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column"}}>
-      <style>{BASE_CSS}</style>
-      {/* Header */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontWeight:900,fontSize:16}}>🫏 DONKEY</span>
-          {ledSuit&&<span style={{fontSize:14,fontWeight:700,color:ledSuit==="♥"||ledSuit==="♦"?T.suit_r:T.suit_b,background:"rgba(0,0,0,.06)",borderRadius:8,padding:"2px 8px"}}>Led: {ledSuit}</span>}
-        </div>
-        <div style={{display:"flex",gap:7,alignItems:"center"}}>
-          <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
-          <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
-        </div>
-      </div>
-
-      {/* Opponents */}
-      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"8px 12px",flexWrap:"wrap"}}>
-        {players.filter(p=>p!==YOU).map(p=>{
-          const h=hands[p]||[];
-          const isCur=currentPlayer===p;
-          const done=finished.includes(p)||h.length===0;
-          return(
-            <div key={p} style={{background:isCur?"rgba(37,99,235,.08)":T.surface,border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(0,0,0,.06)",borderRadius:12,padding:"8px 12px",textAlign:"center",minWidth:80,boxShadow:T.shadow,opacity:done?.5:1}}>
-              <div style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,marginBottom:4}}>{done?"✅":isCur?"▶":""} {p}</div>
-              <div style={{fontSize:10,color:T.muted}}>{done?"Done":h.length+" cards"}</div>
-              {/* Show cards played this trick */}
-              {pile.filter(e=>e.player===p).map(e=>(
-                <div key={e.card.id} style={{marginTop:4,display:"inline-block"}}><DonkeyCard card={e.card} small/></div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Centre pile */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,padding:"0 12px"}}>
-        <div style={{fontSize:12,color:T.muted,fontWeight:600,textAlign:"center"}}>{msg}</div>
-        {/* Pile */}
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",minHeight:96,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:16,padding:"12px 16px",border:"2px dashed rgba(0,0,0,.08)"}}>
-          {pile.length===0?<span style={{color:T.muted,fontSize:13}}>Waiting for first card...</span>:
-            pile.map(e=>(
-              <div key={e.player} style={{textAlign:"center"}}>
-                <DonkeyCard card={e.card}/>
-                <div style={{fontSize:9,color:T.muted,marginTop:3,textAlign:"center"}}>{e.player===YOU?"You":e.player}</div>
-              </div>
-            ))
-          }
-        </div>
-        {/* Finished players */}
-        {finished.length>0&&(
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
-            {finished.map((p,i)=><span key={p} style={{fontSize:11,background:i===0?"rgba(16,185,129,.15)":"rgba(0,0,0,.06)",color:i===0?T.green:T.muted,borderRadius:20,padding:"3px 10px",fontWeight:700}}>{i===0?"🏆":"✅"} {p}</span>)}
-          </div>
-        )}
-      </div>
-
-      {/* My hand */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 16px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontWeight:800,fontSize:13}}>You</span>
-            <span style={{fontSize:11,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.muted}}>{myHand.length} cards</span>
-            {ledSuit&&<span style={{fontSize:10,color:T.gold,fontWeight:700}}>Follow: {ledSuit}</span>}
-          </div>
-          {isMyTurn&&<Btn small variant="primary" onClick={handlePlay} disabled={selected===null}>Play Card</Btn>}
-          {!isMyTurn&&<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
-        </div>
-        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,paddingTop:8}}>
-          {myHand.map((card,idx)=>{
-            const canPlay=!ledSuit||pile.length===0||card.suit===ledSuit||!myHand.some(c=>c.suit===ledSuit);
-            return(
-              <div key={card.id} style={{opacity:isMyTurn&&!canPlay?.45:1}}>
-                <DonkeyCard card={card} selected={selected===idx} onClick={isMyTurn?()=>setSelected(idx===selected?null:idx):undefined}/>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={300} penalty={50}/>}
-    </div>
-  );
-}
-
-// ── Donkey Friends Lobby ──
-function DonkeyFriendsLobby({onStart,onBack}){
-  const [myName,setMyName]=useState("");
-  const [joinCode,setJoinCode]=useState("");
-  const [room,setRoom]=useState(null);
-  const [myCode,setMyCode]=useState("");
-  const [error,setError]=useState("");
-  const [maxP,setMaxP]=useState(4);
-  const [loading,setLoading]=useState(false);
-  const [tab,setTab]=useState("create");
-  const unsubRef=useRef(null);
-  const nameRef=useRef("");
-  useEffect(()=>{nameRef.current=myName;},[myName]);
-
-  async function createRoom(){
-    const nm=nameRef.current.trim();
-    if(!nm){setError("Enter your name!");return;}
-    setError("");setLoading(true);
-    try{
-      const code=genCode();
-      await dbSet(`drooms/${code}`,{code,host:nm,players:[nm],maxPlayers:maxP,game:"donkey",started:false,createdAt:Date.now()});
-      setMyCode(code);listen(code);
-    }catch(e){setError("Failed: "+(e?.message||""));}
-    setLoading(false);
-  }
-
-  async function joinRoom(){
-    const nm=nameRef.current.trim();
-    if(!nm){setError("Enter your name!");return;}
-    const code=joinCode.trim().toUpperCase();
-    if(code.length!==5){setError("Code must be 5 chars");return;}
-    setError("");setLoading(true);
-    try{
-      const r=await dbGet(`drooms/${code}`);
-      if(!r){setError("Room not found!");setLoading(false);return;}
-      if(r.started){setError("Game already started!");setLoading(false);return;}
-      if(r.players.length>=r.maxPlayers){setError("Room full!");setLoading(false);return;}
-      if(r.players.includes(nm)){setError("Name taken!");setLoading(false);return;}
-      await dbMerge(`drooms/${code}`,{players:[...r.players,nm]});
-      setMyCode(code);listen(code);
-    }catch(e){setError("Failed: "+(e?.message||""));}
-    setLoading(false);
-  }
-
-  function listen(code){
-    if(unsubRef.current)unsubRef.current();
-    unsubRef.current=dbListen(`drooms/${code}`,data=>{
-      if(!data)return;
-      const rd={...data};delete rd.gameState;
-      setRoom(rd);
-      if(data.started)onStart(data.players,code,nameRef.current.trim());
-    });
-  }
-
-  async function startGame(){
-    if(!room||room.players.length<2){setError("Need at least 2 players!");return;}
-    const hands=donkeyDeal(room.players);
-    const gs={hands,pile:[],ledSuit:null,turnIdx:0,finished:[],round:1,lastAction:Date.now(),activePlayers:room.players};
-    await dbSet(`drooms/${room.code}`,{...room,started:true,gameState:gs});
-  }
-
-  useEffect(()=>()=>{if(unsubRef.current)unsubRef.current();},[]);
-  const isHost=room&&room.host===nameRef.current.trim();
-  const inp={width:"100%",padding:"13px 14px",borderRadius:10,border:"1.5px solid rgba(0,0,0,.12)",fontSize:15,fontWeight:500,color:T.ink,outline:"none",background:"#fff",fontFamily:T.font,boxSizing:"border-box"};
-
-  if(room)return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
-      <style>{BASE_CSS}</style>
-      <div style={{width:"100%",maxWidth:420}}>
-        <div style={{fontWeight:900,fontSize:22,textAlign:"center",marginBottom:16}}>🫏 Donkey Room</div>
-        <Panel style={{padding:"16px 20px",textAlign:"center",marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>Room Code</div>
-          <div style={{fontSize:44,fontWeight:900,letterSpacing:10,fontFamily:T.mono,color:T.accent}}>{myCode}</div>
-        </Panel>
-        <Panel style={{padding:"16px 20px",marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Players ({room.players.length}/{room.maxPlayers})</div>
-          {room.players.map((p,i)=>(
-            <div key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:8,marginBottom:4,background:p===nameRef.current.trim()?"rgba(37,99,235,.06)":"rgba(0,0,0,.03)"}}>
-              <span style={{fontSize:16}}>{i===0?"👑":"👤"}</span>
-              <span style={{fontWeight:600,fontSize:13,flex:1}}>{p}</span>
-              {p===nameRef.current.trim()&&<span style={{fontSize:10,color:T.accent,fontWeight:700}}>You</span>}
-            </div>
-          ))}
-        </Panel>
-        {isHost?<Btn onClick={startGame} disabled={room.players.length<2} style={{width:"100%",fontSize:15,padding:"14px"}}>{room.players.length>=2?"🚀 Start Donkey!":"Need 2+ players"}</Btn>
-          :<Panel style={{padding:"12px",textAlign:"center"}}><div style={{color:T.muted,fontSize:12}}>⏳ Waiting for {room.host} to start...</div></Panel>}
-        {error&&<div style={{marginTop:8,color:T.red,fontSize:12,textAlign:"center"}}>{error}</div>}
-      </div>
-    </div>
-  );
-
-  return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
-      <style>{BASE_CSS}</style>
-      <div style={{width:"100%",maxWidth:400}}>
-        <button onClick={onBack} style={{background:"none",border:"none",color:T.muted,fontSize:13,cursor:"pointer",fontFamily:T.font,marginBottom:20,padding:0}}>← Back</button>
-        <div style={{fontWeight:900,fontSize:24,marginBottom:16}}>🫏 Donkey — Friends</div>
-        <Panel style={{padding:"14px 16px",marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Your Name</div>
-          <input value={myName} onChange={e=>{setMyName(e.target.value);setError("");}} placeholder="Enter name..." style={inp} autoFocus/>
-        </Panel>
-        <div style={{display:"flex",background:"rgba(0,0,0,.06)",borderRadius:12,padding:4,marginBottom:12,gap:4}}>
-          {["create","join"].map(t=><button key={t} onClick={()=>{setTab(t);setError("");}} style={{flex:1,padding:"9px",borderRadius:9,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,background:tab===t?"#fff":"transparent",color:tab===t?T.ink:T.muted,fontFamily:T.font}}>{t==="create"?"➕ Create":"🔑 Join"}</button>)}
-        </div>
-        {tab==="create"&&(
-          <Panel style={{padding:"14px 16px"}}>
-            <div style={{fontSize:10,fontWeight:700,color:T.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Max Players</div>
-            <div style={{display:"flex",gap:6,marginBottom:14}}>
-              {[2,3,4,5,6].map(n=><button key={n} onClick={()=>setMaxP(n)} style={{flex:1,padding:"10px",borderRadius:9,border:"none",cursor:"pointer",fontSize:16,fontWeight:700,background:maxP===n?T.accent:"rgba(0,0,0,.06)",color:maxP===n?"#fff":T.ink}}>{n}</button>)}
-            </div>
-            <button onClick={createRoom} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:10,border:"none",cursor:loading?"not-allowed":"pointer",background:T.accent,color:"#fff",fontSize:15,fontWeight:800,fontFamily:T.font,opacity:loading?.6:1}}>{loading?"⏳ Creating...":"🚀 Create Room"}</button>
-          </Panel>
-        )}
-        {tab==="join"&&(
-          <Panel style={{padding:"14px 16px"}}>
-            <input value={joinCode} onChange={e=>{setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));setError("");}} onKeyDown={e=>e.key==="Enter"&&joinRoom()} maxLength={5} placeholder="XXXXX" style={{...inp,fontSize:26,fontWeight:900,letterSpacing:8,textAlign:"center",fontFamily:T.mono,marginBottom:12}}/>
-            <button onClick={joinRoom} disabled={loading} style={{width:"100%",padding:"14px",borderRadius:10,border:"none",cursor:loading?"not-allowed":"pointer",background:T.green,color:"#fff",fontSize:15,fontWeight:800,fontFamily:T.font,opacity:loading?.6:1}}>{loading?"⏳ Joining...":"🔑 Join Room"}</button>
-          </Panel>
-        )}
-        {error&&<div style={{marginTop:10,color:T.red,fontSize:12,textAlign:"center"}}>{error}</div>}
-      </div>
-    </div>
-  );
-}
-
-// ── Donkey Online Screen ──
-function DonkeyOnlineScreen({roomCode,myName,onQuit}){
-  const [gs,setGs]=useState(null);
-  const [selected,setSelected]=useState(null);
-  const [msg,setMsg]=useState("Connecting...");
-  const [showRules,setShowRules]=useState(false);
-  const unsubRef=useRef(null);
-  const prevTurnRef=useRef(null);
-
-  useEffect(()=>{
-    const unsub=dbListen(`drooms/${roomCode}/gameState`,g=>{
-      if(!g||!g.activePlayers)return;
-      setGs(g);
-      const cur=g.activePlayers[g.turnIdx%g.activePlayers.length];
-      const tk=`${g.round||1}_${g.turnIdx}`;
-      if(cur===myName&&prevTurnRef.current!==tk){
-        prevTurnRef.current=tk;
-        vibrate([100,50,100]);
-        setMsg("Your turn — play a card");
-      }
-    });
-    unsubRef.current=unsub;
-    return()=>{if(unsubRef.current)unsubRef.current();};
-  },[roomCode,myName]);
-
-  if(!gs)return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font}}>
-      <style>{BASE_CSS}</style>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:40,marginBottom:12,animation:"pulse 1.5s infinite"}}>🫏</div>
-        <div style={{fontWeight:700,color:T.muted}}>Connecting...</div>
-      </div>
-    </div>
-  );
-
-  const {activePlayers,turnIdx,pile,ledSuit,hands,finished}=gs;
-  const currentPlayer=activePlayers[turnIdx%activePlayers.length];
-  const isMyTurn=currentPlayer===myName;
-  const myHand=hands?.[myName]||[];
-  const opponents=activePlayers.filter(n=>n!==myName);
-
-  async function playCard(){
-    if(!isMyTurn||selected===null)return;
-    const card=myHand[selected];
-    if(!card)return;
-    if(ledSuit&&pile&&pile.length>0){
-      const hasSuit=myHand.some(c=>c.suit===ledSuit);
-      if(hasSuit&&card.suit!==ledSuit){setMsg("⚠️ Must follow led suit: "+ledSuit);return;}
-    }
-    const newHand=myHand.filter(c=>c.id!==card.id);
-    const newPile=[...(pile||[]),{player:myName,card}];
-    const newLedSuit=(pile||[]).length===0?card.suit:ledSuit;
-    const newFinished=[...(finished||[])];
-    if(newHand.length===0&&!newFinished.includes(myName))newFinished.push(myName);
-
-    // Check trick complete
-    const stillNeedToPlay=activePlayers.filter(p=>!newPile.find(e=>e.player===p)&&!(newFinished.includes(p)));
-    if(stillNeedToPlay.length===0){
-      // Trick done - find winner
-      const winner=donkeyTrickWinner(newPile,newLedSuit||card.suit);
-      const nowFinished=[...newFinished];
-      activePlayers.forEach(p=>{if((gs.hands[p]||[]).length===(p===myName?1:0)&&!nowFinished.includes(p))nowFinished.push(p);});
-      const stillActive=activePlayers.filter(p=>!nowFinished.includes(p));
-      const wi=stillActive.indexOf(winner);
-      await dbMerge(`drooms/${roomCode}/gameState`,{
-        hands:{...hands,[myName]:newHand},pile:[],ledSuit:null,
-        turnIdx:wi>=0?wi:0,finished:nowFinished,lastAction:Date.now(),
-      });
-    } else {
-      const ni=activePlayers.indexOf(myName);
-      await dbMerge(`drooms/${roomCode}/gameState`,{
-        hands:{...hands,[myName]:newHand},pile:newPile,
-        ledSuit:newLedSuit,finished:newFinished,
-        turnIdx:(ni+1)%activePlayers.length,lastAction:Date.now(),
-      });
-    }
-    setSelected(null);
-  }
-
-  const donkey=activePlayers.length<=1?activePlayers[0]:null;
-  const gameOver=(finished||[]).length>=activePlayers.length-1;
-
-  if(gameOver||donkey)return(
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font,padding:20}}>
-      <style>{BASE_CSS}</style>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:64,marginBottom:12}}>🫏</div>
-        <div style={{fontWeight:900,fontSize:24,marginBottom:8}}>{donkey||activePlayers.find(p=>!(finished||[]).includes(p))} is the DONKEY!</div>
-        <div style={{marginBottom:20}}>{(finished||[]).map((p,i)=><div key={p} style={{fontSize:13,color:i===0?T.green:T.muted,fontWeight:600,marginBottom:3}}>{i+1}. {p} {i===0?"🏆":""}</div>)}</div>
-        <Btn onClick={onQuit}>← Back</Btn>
-      </div>
-    </div>
-  );
-
-  return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column"}}>
-      <style>{BASE_CSS}</style>
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontWeight:900,fontSize:15}}>🫏 DONKEY</span>
-          {ledSuit&&<span style={{fontSize:13,fontWeight:700,color:ledSuit==="♥"||ledSuit==="♦"?T.suit_r:T.suit_b,background:"rgba(0,0,0,.06)",borderRadius:8,padding:"2px 8px"}}>Led: {ledSuit}</span>}
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
-          <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
-        </div>
-      </div>
-      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"8px 12px",flexWrap:"wrap"}}>
-        {opponents.map(p=>{
-          const h=hands?.[p]||[];
-          const isCur=currentPlayer===p;
-          const done=(finished||[]).includes(p);
-          return(
-            <div key={p} style={{background:isCur?"rgba(37,99,235,.08)":T.surface,border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(0,0,0,.06)",borderRadius:12,padding:"7px 12px",textAlign:"center",minWidth:80,opacity:done?.5:1}}>
-              <div style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,marginBottom:3}}>{done?"✅":isCur?"▶":""} {p}</div>
-              <div style={{fontSize:10,color:T.muted}}>{done?"Finished":h.length+" cards"}</div>
-              {(pile||[]).filter(e=>e.player===p).map(e=><div key={e.card.id} style={{marginTop:4,display:"inline-block"}}><DonkeyCard card={e.card} small/></div>)}
-            </div>
-          );
-        })}
-      </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"0 12px"}}>
-        <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center"}}>{isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}</div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",minHeight:96,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:16,padding:"12px 16px",border:"2px dashed rgba(0,0,0,.08)"}}>
-          {(!pile||pile.length===0)?<span style={{color:T.muted,fontSize:13}}>No cards played yet...</span>:
-            pile.map(e=><div key={e.player} style={{textAlign:"center"}}><DonkeyCard card={e.card}/><div style={{fontSize:9,color:T.muted,marginTop:3}}>{e.player===myName?"You":e.player}</div></div>)
-          }
-        </div>
-        {(finished||[]).length>0&&(
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
-            {(finished||[]).map((p,i)=><span key={p} style={{fontSize:11,background:i===0?"rgba(16,185,129,.15)":"rgba(0,0,0,.06)",color:i===0?T.green:T.muted,borderRadius:20,padding:"3px 10px",fontWeight:700}}>{i===0?"🏆":"✅"} {p}</span>)}
-          </div>
-        )}
-      </div>
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 16px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontWeight:800,fontSize:13}}>You</span>
-            <span style={{fontSize:11,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.muted}}>{myHand.length} cards</span>
-            {ledSuit&&<span style={{fontSize:10,color:T.gold,fontWeight:700}}>Follow: {ledSuit}</span>}
-          </div>
-          {isMyTurn&&<Btn small variant="primary" onClick={playCard} disabled={selected===null}>Play Card</Btn>}
-          {!isMyTurn&&<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
-        </div>
-        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,paddingTop:8}}>
-          {myHand.map((card,idx)=>{
-            const canPlay=!ledSuit||(pile||[]).length===0||card.suit===ledSuit||!myHand.some(c=>c.suit===ledSuit);
-            return(
-              <div key={card.id} style={{opacity:isMyTurn&&!canPlay?.45:1}}>
-                <DonkeyCard card={card} selected={selected===idx} onClick={isMyTurn?()=>setSelected(idx===selected?null:idx):undefined}/>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={300} penalty={50}/>}
-    </div>
   );
 }
