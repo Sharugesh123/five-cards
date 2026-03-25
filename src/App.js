@@ -6,14 +6,7 @@ const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
 async function dbSet(key,data){const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!r.ok)throw new Error(`Write ${r.status}`);return r.json();}
 async function dbGet(key){const r=await fetch(`${FB}/${key}.json`);if(!r.ok)throw new Error(`Read ${r.status}`);return r.json();}
 async function dbMerge(key,u){const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});if(!r.ok)throw new Error(`Merge ${r.status}`);return r.json();}
-function dbListen(key,cb){
-  let stopped=false,lastJson=null,es=null,pollTimer=null;
-  function stopAll(){stopped=true;if(es){try{es.close();}catch(_){}es=null;}if(pollTimer){clearTimeout(pollTimer);pollTimer=null;}}
-  fetch(`${FB}/${key}.json`).then(r=>r.ok?r.text():null).then(t=>{if(t&&!stopped){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}).catch(()=>{});
-  function startSSE(){try{es=new EventSource(`${FB}/${key}.json?accept=text%2Fevent-stream`);es.addEventListener('put',ev=>{if(stopped)return;try{const d=JSON.parse(ev.data);if(d&&d.path==='/'&&d.data!==null){lastJson=JSON.stringify(d.data);cb(d.data);}else if(d&&d.path!=='/'&&d.data!==null){fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{if(!stopped&&t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}).catch(()=>{});}}catch(_){}});es.addEventListener('patch',()=>{if(stopped)return;fetch(`${FB}/${key}.json`).then(r=>r.text()).then(t=>{if(!stopped&&t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}).catch(()=>{});});es.onerror=()=>{if(stopped)return;if(es){try{es.close();}catch(_){}es=null;}startFallback();};}catch(_){startFallback();}}
-  function startFallback(){async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)pollTimer=setTimeout(poll,700);}poll();}
-  startSSE();return stopAll;
-}
+function dbListen(key,cb){let stopped=false,lastJson=null;async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)setTimeout(poll,1500);}poll();return()=>{stopped=true;};}
 
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
@@ -80,7 +73,7 @@ const ScoreChip=memo(({name,score,limit,isActive,isElim,isYou})=>{
   );
 });
 
-const TimerRing=memo(({timeLeft,total=30})=>{
+const TimerRing=memo(({timeLeft,total=20})=>{
   const r=20,circ=2*Math.PI*r,pct=Math.max(0,timeLeft/total);
   const color=timeLeft>15?T.green:timeLeft>7?T.gold:T.red;
   return(
@@ -641,136 +634,6 @@ function FriendsLobby({scoreLimit,penalty,onStart,onBack}){
   );
 }
 
-
-// ── Chat & Voice helpers ──────────────────────────────────────────────────────
-async function sendChat(roomCode,name,text,type="text"){
-  const msg={name,text,type,ts:Date.now(),id:Math.random().toString(36).slice(2,8)};
-  const msgs=await dbGet(`chats/${roomCode}`)||[];
-  const arr=Array.isArray(msgs)?msgs:Object.values(msgs);
-  await dbSet(`chats/${roomCode}`,[...arr.slice(-49),msg]);
-}
-
-// ── ChatBox component ─────────────────────────────────────────────────────────
-function ChatBox({roomCode,myName,onClose}){
-  const [msgs,setMsgs]=useState([]);
-  const [input,setInput]=useState("");
-  const [recording,setRecording]=useState(false);
-  const [supported,setSupported]=useState(false);
-  const unsubRef=useRef(null);
-  const endRef=useRef(null);
-  const mediaRef=useRef(null);
-  const chunksRef=useRef([]);
-
-  useEffect(()=>{
-    setSupported(!!(navigator.mediaDevices&&window.MediaRecorder));
-    unsubRef.current=dbListen(`chats/${roomCode}`,data=>{
-      if(!data)return;
-      const arr=Array.isArray(data)?data:Object.values(data);
-      setMsgs(arr.sort((a,b)=>a.ts-b.ts));
-    });
-    return()=>{if(unsubRef.current)unsubRef.current();};
-  },[roomCode]);
-
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
-
-  async function send(){
-    const t=input.trim();if(!t)return;
-    setInput("");
-    await sendChat(roomCode,myName,t,"text");
-  }
-
-  async function startVoice(){
-    try{
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-      chunksRef.current=[];
-      const mr=new MediaRecorder(stream,{mimeType:MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'audio/ogg'});
-      mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
-      mr.onstop=async()=>{
-        stream.getTracks().forEach(t=>t.stop());
-        const blob=new Blob(chunksRef.current,{type:mr.mimeType});
-        const reader=new FileReader();
-        reader.onload=async()=>{
-          // Store as base64 data URL — works without extra storage
-          const b64=reader.result;
-          await sendChat(roomCode,myName,b64,"voice");
-        };
-        reader.readAsDataURL(blob);
-        setRecording(false);
-      };
-      mr.start();
-      mediaRef.current=mr;
-      setRecording(true);
-      // Auto-stop after 15s
-      setTimeout(()=>{if(mediaRef.current&&mediaRef.current.state==="recording")mediaRef.current.stop();},15000);
-    }catch(e){alert("Mic permission needed for voice notes");}
-  }
-
-  function stopVoice(){if(mediaRef.current&&mediaRef.current.state==="recording")mediaRef.current.stop();}
-
-  function playVoice(src){const a=new Audio(src);a.play().catch(()=>{});}
-
-  const fmtTime=ts=>{const d=new Date(ts);return d.getHours().toString().padStart(2,"0")+":"+d.getMinutes().toString().padStart(2,"0");};
-
-  return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center",padding:"0"}}>
-      <div style={{width:"100%",maxWidth:480,height:"70vh",background:"#fff",borderRadius:"20px 20px 0 0",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,.2)"}}>
-        {/* Header */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px 10px",borderBottom:"1px solid rgba(0,0,0,.07)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:18}}>💬</span>
-            <span style={{fontWeight:800,fontSize:16,color:T.ink}}>Chat</span>
-          </div>
-          <button onClick={onClose} style={{background:"rgba(0,0,0,.06)",border:"none",borderRadius:"50%",width:30,height:30,cursor:"pointer",fontSize:14,color:T.muted,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-        </div>
-        {/* Messages */}
-        <div style={{flex:1,overflowY:"auto",padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
-          {msgs.length===0&&<div style={{textAlign:"center",color:T.muted,fontSize:13,marginTop:20}}>No messages yet. Say hi! 👋</div>}
-          {msgs.map(m=>{
-            const isMe=m.name===myName;
-            return(
-              <div key={m.id||m.ts} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start"}}>
-                {!isMe&&<span style={{fontSize:10,color:T.muted,fontWeight:600,marginBottom:2,marginLeft:4}}>{m.name}</span>}
-                <div style={{maxWidth:"75%",background:isMe?T.accent:"rgba(0,0,0,.06)",color:isMe?"#fff":T.ink,borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",padding:"9px 13px",boxShadow:"0 2px 6px rgba(0,0,0,.08)"}}>
-                  {m.type==="voice"?(
-                    <button onClick={()=>playVoice(m.text)} style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:6,color:isMe?"#fff":T.ink,fontFamily:T.font,fontSize:13,fontWeight:700,padding:0}}>
-                      <span style={{fontSize:18}}>▶</span> Voice note
-                    </button>
-                  ):(
-                    <span style={{fontSize:14,lineHeight:1.4,wordBreak:"break-word"}}>{m.text}</span>
-                  )}
-                </div>
-                <span style={{fontSize:9,color:T.muted,marginTop:2,marginLeft:4,marginRight:4}}>{fmtTime(m.ts)}</span>
-              </div>
-            );
-          })}
-          <div ref={endRef}/>
-        </div>
-        {/* Input row */}
-        <div style={{padding:"10px 14px 20px",borderTop:"1px solid rgba(0,0,0,.06)",display:"flex",gap:8,alignItems:"center",background:"#fff",borderRadius:"0 0 0 0"}}>
-          <input
-            value={input} onChange={e=>setInput(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&send()}
-            placeholder="Type a message..."
-            style={{flex:1,padding:"10px 14px",borderRadius:22,border:"1.5px solid rgba(0,0,0,.1)",fontSize:14,outline:"none",background:"rgba(0,0,0,.03)",fontFamily:T.font,color:T.ink}}
-          />
-          {input.trim()?(
-            <button onClick={send} style={{width:40,height:40,borderRadius:"50%",background:T.accent,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(37,99,235,.4)"}}>
-              <span style={{color:"#fff",fontSize:16}}>➤</span>
-            </button>
-          ):supported?(
-            <button
-              onMouseDown={startVoice} onTouchStart={startVoice}
-              onMouseUp={stopVoice} onTouchEnd={stopVoice}
-              style={{width:40,height:40,borderRadius:"50%",background:recording?"#ef4444":T.green,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:recording?"0 0 0 4px rgba(239,68,68,.3)":"0 2px 8px rgba(16,185,129,.3)",transition:"all .2s"}}>
-              <span style={{fontSize:18}}>{recording?"⏹":"🎤"}</span>
-            </button>
-          ):null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Online Game Screen ────────────────────────────────────────────────────────
 function OnlineGameScreen({roomCode,myName,onQuit}){
   const [gs,setGs]=useState(null);
@@ -782,13 +645,12 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [showGate,setShowGate]=useState(false);
   const [showContinue,setShowContinue]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
-  const [showChat,setShowChat]=useState(false);
   const [timeLeft,setTimeLeft]=useState(30);
   const unsubRef=useRef(null);
   const prevTurnRef=useRef(null);
   const timerRef=useRef(null);
 
-  function startTimer(){clearInterval(timerRef.current);setTimeLeft(30);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
+  function startTimer(){clearInterval(timerRef.current);setTimeLeft(20);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
 
   useEffect(()=>{
     if(!gs||timeLeft!==0)return;
@@ -871,7 +733,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const gained={};activePlayers.forEach(n=>{gained[n]=(ns[n]||0)-(scores[n]||0);});
     const hist=[...(gs.history||[]),{round:round||1,winner:clWon?myName:"❌",gained}];
     await pushGs({scores:ns,eliminated:newElim,activePlayers:newActive,roundResult:{results,claimerName:myName,claimerWon:clWon,claimerPts:clPts,lowestPts:lowPts,justElim,newScores:ns,shown:false},history:hist,gameWinner:winner,lastAction:Date.now()});
-    sendChat(roomCode,"🎮 Game",`${myName} called SHOW! ${clWon?"✅ Correct (+0 pts)":"❌ Wrong (+"+pen+" pts)"}`,"text").catch(()=>{});
   }
 
   async function nextRound(){
@@ -898,7 +759,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <Btn small variant="ghost" onClick={()=>setShowChat(true)}>💬</Btn>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
@@ -927,9 +787,10 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       {/* Table — wild peeks from bottom */}
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"4px 12px",position:"relative",minHeight:200}}>
         {wildCard&&(
-          <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
-            <span style={{fontSize:13}}>🌟</span>
-            <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:20,padding:"4px 14px"}}>
+            <span style={{fontSize:14}}>🌟</span>
+            <span style={{fontSize:12,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+            <Card card={wildCard} small/>
           </div>
         )}
         <div style={{display:"flex",gap:24,alignItems:"flex-end",justifyContent:"center"}}>
@@ -954,8 +815,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           </div>
         )}
         <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}</div>
-        {/* Wild card peek — horizontal, 30% visible */}
-        {wildCard&&<WildCardPeek card={wildCard}/>}
       </div>
       {/* My hand */}
       <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px"}}>
@@ -966,13 +825,12 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           </div>
           {isMyTurn?<div style={{display:"flex",gap:7}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
         </div>
-        <div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingTop:14,paddingBottom:2}}>
+        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
           {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>)}
         </div>
       </div>
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
-      {showChat&&<ChatBox roomCode={roomCode} myName={myName} onClose={()=>setShowChat(false)}/>}
     </div>
   );
 }
@@ -995,14 +853,12 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [msg,setMsg]=useState("");
   const [showRules,setShowRules]=useState(false);
   const [showHistory,setShowHistory]=useState(false);
-  const [showChat,setShowChat]=useState(false);
   const [roundResult,setRoundResult]=useState(null);
   const [newlyElim,setNewlyElim]=useState([]);
   const [gameWinner,setGameWinner]=useState(null);
   const [wildCard,setWildCard]=useState(null);
   const [history,setHistory]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
-  const [showContinueAI,setShowContinueAI]=useState(false); // BUG FIX: was missing useState
 
   const aiTimerRef=useRef(null);
   const turnTimerRef=useRef(null);
@@ -1020,7 +876,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   useEffect(()=>{rrRef.current=roundResult;},[roundResult]);
   useEffect(()=>{gwRef.current=gameWinner;},[gameWinner]);
 
-  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(30);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
+  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(20);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
   useEffect(()=>()=>{clearInterval(turnTimerRef.current);clearTimeout(aiTimerRef.current);},[]);
 
   function deal(ap,roundNum){
@@ -1030,30 +886,26 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const h={};let cur=0;for(const n of a){h[n]=dr.slice(cur,cur+5);cur+=5;}
     const si=(roundNum||1)%a.length;
     setWildCard(wc);setStock(dr.slice(cur+1));setPile([dr[cur]]);setHands(h);
-    setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);setShowContinueAI(false);
+    setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
     setMsg(a[si]===YOU?"Pick source · select drop · SWAP":`${a[si]}'s turn...`);
     if(a[si]===YOU)startTurnTimer();
   }
   useEffect(()=>{deal();},[]);// eslint-disable-line
 
-  // BUG FIX: timer expiry now checks refs not stale state
+  // Timer expiry: auto-skip immediately, no popup
   useEffect(()=>{
     if(timeLeft!==0||rrRef.current||gwRef.current)return;
     const cur=activeRef.current[turnIdxRef.current];
     if(cur!==YOU)return;
     clearInterval(turnTimerRef.current);
-    setShowContinueAI(true);
-  },[timeLeft]);// eslint-disable-line
-
-  function onContinueAI(){setShowContinueAI(false);setTimeLeft(10);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
-  function onSkipAI(){
-    setShowContinueAI(false);clearInterval(turnTimerRef.current);
+    // Auto-skip to next player
     const a=activeRef.current,idx=turnIdxRef.current;
     const next=(idx+1)%a.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
-    setMsg(a[next]===YOU?"Your turn":`${a[next]}'s turn`);
+    setMsg(a[next]===YOU?"Pick source · select drop · SWAP":`${a[next]}'s turn...`);
     if(a[next]===YOU)startTurnTimer();
-  }
+    vibrate([200,100,200]);
+  },[timeLeft]);// eslint-disable-line
 
   const currentPlayer=active[turnIdx];
   const isMyTurn=currentPlayer===YOU;
@@ -1156,7 +1008,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     np=[...np,...dropping];
     const kept=hand.filter((_,i)=>!dropIdxs.includes(i));
     setStock(ns);setPile(np);setHands(prev=>({...prev,[YOU]:[...kept,drew]}));
-    clearInterval(turnTimerRef.current);setShowContinueAI(false);
+    clearInterval(turnTimerRef.current);
     const a=activeRef.current,tidx=turnIdxRef.current;
     const next=(tidx+1)%a.length;
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
@@ -1164,7 +1016,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     if(a[next]===YOU)startTurnTimer();
   }
 
-  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);setShowContinueAI(false);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
+  function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
 
   const myHand=hands[YOU]||[];
   const pileTop=pile[pile.length-1]||null;
@@ -1185,7 +1037,6 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
         </div>
         <div style={{display:"flex",gap:7,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <Btn small variant="ghost" onClick={()=>setShowChat(true)}>💬</Btn>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
@@ -1195,91 +1046,86 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
         {allPlayers.map(n=><ScoreChip key={n} name={n} score={scores[n]||0} limit={scoreLimit} isActive={active[turnIdx]===n} isElim={eliminated.includes(n)} isYou={n===YOU}/>)}
       </div>
-      {/* Main */}
-      <div style={{flex:1,display:"flex",flexDirection:"row",gap:12,padding:"8px 12px",minHeight:0}}>
-        {/* Opponents column */}
-        <div style={{display:"flex",flexDirection:"column",gap:8,width:118,flexShrink:0,overflowY:"auto"}}>
-          {active.filter(n=>n!==YOU).map(name=>{
-            const h=hands[name]||[],isCur=currentPlayer===name;
-            return(
-              <Panel key={name} style={{padding:"10px",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
-                  <span style={{fontSize:12}}>🤖</span>
-                  <span style={{fontWeight:700,fontSize:10,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                  {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
-                </div>
-                <FanCards count={Math.max(1,h.length||5)}/>
-              </Panel>
-            );
-          })}
-        </div>
-        {/* Centre table */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,position:"relative",minHeight:200}}>
-          {/* Wild label */}
-          {wildCard&&(
-            <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.25)",borderRadius:20,padding:"3px 12px"}}>
-              <span style={{fontSize:13}}>🌟</span>
-              <span style={{fontSize:11,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+      {/* ── Opponents row — horizontal across top ── */}
+      <div style={{display:"flex",gap:8,justifyContent:"center",padding:"4px 12px 0",flexWrap:"wrap"}}>
+        {active.filter(n=>n!==YOU).map(name=>{
+          const h=hands[name]||[],isCur=currentPlayer===name;
+          return(
+            <div key={name} style={{background:isCur?"rgba(37,99,235,.08)":T.surface,backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(0,0,0,.06)",borderRadius:12,padding:"7px 12px",textAlign:"center",boxShadow:T.shadow,minWidth:90}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:5}}>
+                <span style={{fontSize:11}}>🤖</span>
+                <span style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,maxWidth:72,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                {isCur&&<span style={{fontSize:9,color:T.accent,fontWeight:700,animation:"pulse 1s infinite"}}>▶</span>}
+              </div>
+              <FanCards count={Math.max(1,h.length||5)}/>
             </div>
-          )}
-          {/* Stock + Discard */}
-          <div style={{display:"flex",gap:20,alignItems:"flex-end"}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
-              {stock.length>0?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
-            </div>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
-              {pileTop?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"Source ✓":null}/>:<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>}
-            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Table: Wild + Stock + Discard — centred ── */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"10px 12px"}}>
+        {wildCard&&(
+          <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:20,padding:"4px 14px"}}>
+            <span style={{fontSize:14}}>🌟</span>
+            <span style={{fontSize:12,fontWeight:700,color:T.gold}}>Wild · {wildCard.rank}s = 0 pts</span>
+            <Card card={wildCard} small/>
           </div>
-          {/* Step indicator */}
-          {isMyTurn&&(
-            <div style={{display:"flex",gap:4,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"6px 14px"}}>
-              {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:4}}>
-                  <div style={{width:20,height:20,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
-                  <span style={{fontSize:11,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
-                  {i<2&&<span style={{color:"rgba(0,0,0,.15)",fontSize:12}}>›</span>}
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{fontSize:12,color:T.muted,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
-          {/* Wild card peek — horizontal, ~30% visible */}
-          {wildCard&&<WildCardPeek card={wildCard}/>}
+        )}
+        <div style={{display:"flex",gap:28,alignItems:"flex-end",justifyContent:"center"}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Stock ({stock.length})</div>
+            {stock.length>0
+              ?<Card card={stock[0]} faceDown glowGreen={isMyTurn&&drawFrom==="stock"} onClick={isMyTurn?selStock:undefined} badge={drawFrom==="stock"?"✓ Source":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
+            }
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.muted,marginBottom:5,textTransform:"uppercase",letterSpacing:.5}}>Discard</div>
+            {pileTop
+              ?<Card card={pileTop} glowGreen={isMyTurn&&drawFrom==="pile"} onClick={isMyTurn?selPile:undefined} badge={drawFrom==="pile"?"✓ Source":null}/>
+              :<div style={{width:64,height:92,borderRadius:10,border:"2px dashed rgba(0,0,0,.1)"}}/>
+            }
+          </div>
+        </div>
+        {isMyTurn&&(
+          <div style={{display:"flex",gap:5,alignItems:"center",background:"rgba(0,0,0,.04)",borderRadius:20,padding:"5px 14px"}}>
+            {[["Source",drawFrom!=null],["Drop",dropIdxs.length>0],["Swap",readySwap]].map(([label,done],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:3}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:done?T.green:"rgba(0,0,0,.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:done?"#fff":T.muted,fontWeight:700,transition:"all .2s"}}>{done?"✓":i+1}</div>
+                <span style={{fontSize:10,color:done?T.green:T.muted,fontWeight:done?700:400}}>{label}</span>
+                {i<2&&<span style={{color:"rgba(0,0,0,.12)",fontSize:10}}>›</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{msg}</div>
+      </div>
+
+      {/* ── My hand — pinned at bottom, no overflow ── */}
+      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 14px",marginTop:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontWeight:800,fontSize:13}}>You</span>
+            <span style={{fontSize:11,fontFamily:T.mono,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.ink}}>{handTotal(myHand,wildCard)} pts</span>
+          </div>
+          {isMyTurn
+            ?<div style={{display:"flex",gap:7}}>
+                <Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn>
+                <Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn>
+              </div>
+            :<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} thinking...`:"Wait..."}</span>
+          }
+        </div>
+        <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
+          {myHand.map((card,idx)=>(
+            <Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>
+          ))}
         </div>
       </div>
-      {/* My hand */}
-      <Panel style={{margin:"0 8px 10px",padding:"12px 14px",borderRadius:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontWeight:700,fontSize:13}}>You</span>
-            <span style={{fontSize:11,fontFamily:T.mono,color:T.muted}}>{handTotal(myHand,wildCard)} pts</span>
-          </div>
-          {isMyTurn?<div style={{display:"flex",gap:8}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>{isAI(currentPlayer)?`${currentPlayer} is thinking...`:"Wait..."}</span>}
-        </div>
-        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",paddingTop:16}}>
-          {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop ✓":null}/>)}
-        </div>
-      </Panel>
-      {/* Timer expired modal */}
-      {showContinueAI&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",backdropFilter:"blur(6px)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <Panel style={{padding:"32px 28px",textAlign:"center",maxWidth:300,width:"90%"}}>
-            <div style={{fontSize:40,marginBottom:12}}>⏱</div>
-            <div style={{fontWeight:900,fontSize:18,marginBottom:8}}>Time's Up!</div>
-            <div style={{color:T.muted,fontSize:13,marginBottom:20}}>Your 30 seconds are over.</div>
-            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-              <Btn variant="ghost" onClick={onSkipAI}>Skip Turn</Btn>
-              <Btn variant="gold" onClick={onContinueAI}>+10s More</Btn>
-            </div>
-          </Panel>
-        </div>
-      )}
+
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
-      {showChat&&<ChatBox roomCode={'ai-local'} myName={YOU} onClose={()=>setShowChat(false)}/>}
     </div>
   );
 }
