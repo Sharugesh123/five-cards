@@ -22,13 +22,8 @@ const BASE_CSS=`
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
   @keyframes pop{0%{transform:scale(.85);}60%{transform:scale(1.06);}100%{transform:none;}}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
-  @keyframes bubbleIn{0%{opacity:0;transform:scale(.6) translateY(8px);}60%{transform:scale(1.08) translateY(-2px);}100%{opacity:1;transform:scale(1) translateY(0);}}
-  @keyframes bubbleOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(.8) translateY(-10px);}}
-  @keyframes chatSlideUp{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
-  .bubble-in{animation:bubbleIn .35s cubic-bezier(.22,1,.36,1) both;}
-  .bubble-out{animation:bubbleOut .3s ease-in both;}
 `;
 
 // ── Game constants ────────────────────────────────────────────────────────────
@@ -169,81 +164,61 @@ const FanCards=memo(({count=5})=>{
 
 // ── Chat system ───────────────────────────────────────────────────────────────
 const QUICK_MSGS=[
-  {label:"👋",text:"👋"},
-  {label:"😂",text:"😂"},
-  {label:"🔥",text:"🔥"},
-  {label:"😱",text:"😱"},
-  {label:"😤",text:"😤"},
-  {label:"🙏",text:"🙏"},
-  {label:"GG",text:"GG!"},
-  {label:"Noice",text:"Nice one! 👌"},
-  {label:"Luck",text:"Lucky! 😏"},
-  {label:"Easy",text:"Too easy 😎"},
-  {label:"Oops",text:"Oops! 😅"},
-  {label:"Hurry",text:"Hurry up! ⏰"},
+  {label:"👋",text:"👋"},{label:"😂",text:"😂"},{label:"🔥",text:"🔥"},
+  {label:"😱",text:"😱"},{label:"😤",text:"😤"},{label:"🙏",text:"🙏"},
+  {label:"GG",text:"GG!"},{label:"Noice",text:"Nice one! 👌"},
+  {label:"Luck",text:"Lucky! 😏"},{label:"Easy",text:"Too easy 😎"},
+  {label:"Oops",text:"Oops! 😅"},{label:"Hurry",text:"Hurry up! ⏰"},
 ];
 
 const ChatBubble=memo(({msg,isMe,dying})=>{
   if(!msg)return null;
   return(
     <div className={dying?"bubble-out":"bubble-in"} style={{
-      position:"absolute",
-      bottom:"calc(100% + 8px)",
+      position:"absolute",bottom:"calc(100% + 8px)",
       ...(isMe?{right:0}:{left:0}),
-      background:isMe?T.accent:"rgba(255,255,255,.95)",
+      background:isMe?T.accent:"rgba(255,255,255,.97)",
       color:isMe?"#fff":T.ink,
       borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",
-      padding:"7px 11px",
-      fontSize:13,
-      fontWeight:600,
-      maxWidth:160,
-      whiteSpace:"pre-wrap",
-      wordBreak:"break-word",
+      padding:"6px 11px",fontSize:13,fontWeight:600,maxWidth:160,
+      whiteSpace:"pre-wrap",wordBreak:"break-word",
       boxShadow:"0 4px 16px rgba(0,0,0,.18)",
-      border:isMe?"none":"1px solid rgba(0,0,0,.06)",
-      zIndex:20,
-      pointerEvents:"none",
-      lineHeight:1.3,
+      border:isMe?"none":"1px solid rgba(0,0,0,.07)",
+      zIndex:20,pointerEvents:"none",lineHeight:1.3,
     }}>{msg}</div>
   );
 });
 
-function QuickChatPanel({onSend,onClose}){
+// Slim horizontal scrollable strip — always visible, never blocks game
+function ChatSlider({onSend,visible}){
+  if(!visible)return null;
   return(
-    <div style={{
-      position:"fixed",inset:0,zIndex:150,display:"flex",alignItems:"flex-end",justifyContent:"center",
-      background:"rgba(0,0,0,.3)",backdropFilter:"blur(4px)",
-    }} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{
-        width:"100%",maxWidth:480,
-        background:T.surface,backdropFilter:"blur(20px)",
-        borderTop:"1.5px solid rgba(255,255,255,.8)",
-        borderRadius:"20px 20px 0 0",
-        padding:"14px 16px 28px",
-        animation:"chatSlideUp .28s cubic-bezier(.22,1,.36,1) both",
-        boxShadow:"0 -8px 32px rgba(0,0,0,.18)",
-      }}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <span style={{fontWeight:800,fontSize:14,color:T.ink}}>💬 Quick Chat</span>
-          <button onClick={onClose} style={{background:"rgba(0,0,0,.07)",border:"none",borderRadius:20,padding:"4px 10px",cursor:"pointer",fontSize:13,color:T.muted,fontFamily:T.font}}>✕</button>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-          {QUICK_MSGS.map(({label,text})=>(
-            <button key={label} onClick={()=>{onSend(text);onClose();}} style={{
-              padding:"10px 4px",borderRadius:12,border:"1.5px solid rgba(0,0,0,.08)",
-              background:"rgba(255,255,255,.8)",cursor:"pointer",
-              fontSize:text.length<=2?22:12,fontWeight:700,color:T.ink,
-              fontFamily:T.font,lineHeight:1.2,
-              boxShadow:"0 2px 6px rgba(0,0,0,.06)",
-              transition:"transform .1s,background .1s",
-              WebkitTapHighlightColor:"transparent",
-            }}
-            onTouchStart={e=>{e.currentTarget.style.transform="scale(.93)";e.currentTarget.style.background="rgba(37,99,235,.08)";}}
-            onTouchEnd={e=>{e.currentTarget.style.transform="";e.currentTarget.style.background="rgba(255,255,255,.8)";}}
-            >{label}</button>
-          ))}
-        </div>
-      </div>
+    <div className="chat-slider-strip" style={{
+      display:"flex",alignItems:"center",gap:6,
+      overflowX:"auto",overflowY:"hidden",flexShrink:0,
+      padding:"6px 10px",
+      scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
+      animation:"chatSlide .18s ease both",
+      background:"rgba(255,255,255,.68)",
+      backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",
+      borderBottom:"1px solid rgba(0,0,0,.07)",
+    }}>
+      {QUICK_MSGS.map(({label,text})=>(
+        <button key={label}
+          onPointerDown={e=>{e.currentTarget.style.transform="scale(.85)";e.currentTarget.style.background=T.accent;e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor=T.accent;}}
+          onPointerUp={e=>{e.currentTarget.style.transform="";e.currentTarget.style.background="rgba(255,255,255,.9)";e.currentTarget.style.color=T.ink;e.currentTarget.style.borderColor="rgba(0,0,0,.1)";onSend(text);}}
+          onPointerLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.background="rgba(255,255,255,.9)";e.currentTarget.style.color=T.ink;e.currentTarget.style.borderColor="rgba(0,0,0,.1)";}}
+          style={{
+            flexShrink:0,padding:"4px 12px",borderRadius:20,
+            border:"1.5px solid rgba(0,0,0,.1)",
+            background:"rgba(255,255,255,.9)",cursor:"pointer",
+            fontSize:text.length<=2?17:11,fontWeight:700,color:T.ink,
+            fontFamily:T.font,lineHeight:1,whiteSpace:"nowrap",
+            boxShadow:"0 1px 4px rgba(0,0,0,.06)",
+            transition:"transform .07s,background .07s,color .07s",
+            WebkitTapHighlightColor:"transparent",userSelect:"none",
+          }}>{label}</button>
+      ))}
     </div>
   );
 }
@@ -732,30 +707,26 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [showContinue,setShowContinue]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
-  const [showQuickChat,setShowQuickChat]=useState(false);
-  const [chatMsgs,setChatMsgs]=useState({});// {playerName: {text,ts,dying}}
+  const [chatOpen,setChatOpen]=useState(false);
+  const [chatMsgs,setChatMsgs]=useState({});
   const chatTimersRef=useRef({});
   const unsubRef=useRef(null);
   const unsubChatRef=useRef(null);
   const prevTurnRef=useRef(null);
   const timerRef=useRef(null);
-
-  function showChatBubble(name,text){
+  // Use a ref-wrapped setter so the dbListen closure never goes stale
+  const showChatBubble=useCallback((name,text)=>{
     clearTimeout(chatTimersRef.current[name+"_die"]);
     clearTimeout(chatTimersRef.current[name+"_clear"]);
     setChatMsgs(p=>({...p,[name]:{text,ts:Date.now(),dying:false}}));
-    chatTimersRef.current[name+"_die"]=setTimeout(()=>{
-      setChatMsgs(p=>p[name]?{...p,[name]:{...p[name],dying:true}}:p);
-    },2800);
-    chatTimersRef.current[name+"_clear"]=setTimeout(()=>{
-      setChatMsgs(p=>{const n={...p};delete n[name];return n;});
-    },3200);
-  }
+    chatTimersRef.current[name+"_die"]=setTimeout(()=>setChatMsgs(p=>p[name]?{...p,[name]:{...p[name],dying:true}}:p),2700);
+    chatTimersRef.current[name+"_clear"]=setTimeout(()=>setChatMsgs(p=>{const n={...p};delete n[name];return n;}),3100);
+  },[]);
 
   async function sendChat(text){
-    const entry={name:myName,text,ts:Date.now()};
-    await dbSet(`rooms/${roomCode}/chat/${myName.replace(/[^a-zA-Z0-9]/g,"_")}`,entry);
     showChatBubble(myName,text);
+    setChatOpen(false);
+    try{await dbSet(`rooms/${roomCode}/chat/${myName.replace(/[^a-zA-Z0-9]/g,"_")}`,{name:myName,text,ts:Date.now()});}catch(_){}
   }
 
   function startTimer(){clearInterval(timerRef.current);setTimeLeft(20);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
@@ -785,21 +756,19 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     });
     unsubRef.current=unsub;
     // Chat listener
-    const seenChatTs={};
+    const seenTs={};
     const chatUnsub=dbListen(`rooms/${roomCode}/chat`,data=>{
       if(!data)return;
-      Object.entries(data).forEach(([,entry])=>{
-        if(!entry||!entry.name||!entry.text)return;
-        if(entry.name===myName)return;// already shown locally
-        const key=entry.name+(entry.ts||"");
-        if(seenChatTs[key])return;
-        seenChatTs[key]=true;
-        showChatBubble(entry.name,entry.text);
+      Object.entries(data).forEach(([,e])=>{
+        if(!e||!e.name||!e.text||e.name===myName)return;
+        const k=e.name+(e.ts||"");
+        if(seenTs[k])return;seenTs[k]=true;
+        showChatBubble(e.name,e.text);
       });
     });
     unsubChatRef.current=chatUnsub;
     return()=>{if(unsubRef.current)unsubRef.current();if(unsubChatRef.current)unsubChatRef.current();clearInterval(timerRef.current);};
-  },[roomCode,myName]);// eslint-disable-line
+  },[roomCode,myName,showChatBubble]);// eslint-disable-line
 
   if(!gs)return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font}}>
@@ -881,7 +850,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <Btn small variant="ghost" onClick={()=>setShowQuickChat(true)}>💬</Btn>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
@@ -891,11 +859,12 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       <div style={{padding:"6px 10px",display:"flex",gap:5,overflowX:"auto"}}>
         {activePlayers.map(n=><ScoreChip key={n} name={n} score={scores?.[n]||0} limit={sl} isActive={currentPlayer===n} isElim={(eliminated||[]).includes(n)} isYou={n===myName}/>)}
       </div>
+      {/* Chat slider strip */}
+      <ChatSlider visible={chatOpen} onSend={sendChat}/>
       {/* Opponents */}
       <div style={{display:"flex",gap:8,justifyContent:"center",padding:"6px 10px",flexWrap:"wrap"}}>
         {opponents.map(name=>{
-          const h=hands?.[name]||[],isCur=currentPlayer===name;
-          const bubble=chatMsgs[name];
+          const h=hands?.[name]||[],isCur=currentPlayer===name,bubble=chatMsgs[name];
           return(
             <div key={name} style={{position:"relative",background:isCur?"rgba(37,99,235,.08)":T.surface,backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)",borderRadius:12,padding:"8px 10px",textAlign:"center",minWidth:80,boxShadow:T.shadow}}>
               {bubble&&<ChatBubble msg={bubble.text} isMe={false} dying={bubble.dying}/>}
@@ -942,10 +911,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         <div style={{fontSize:12,color:isMyTurn?T.accent:T.muted,fontWeight:isMyTurn?600:400,textAlign:"center",fontStyle:isMyTurn?"normal":"italic"}}>{isMyTurn?msg:`⏳ ${currentPlayer}'s turn...`}</div>
       </div>
       {/* My hand */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px",position:"relative"}}>
-        {/* My chat bubble floats above my hand area */}
+      <div style={{position:"relative",background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 12px 16px"}}>
         {chatMsgs[myName]&&(
-          <div style={{position:"absolute",top:0,right:14,transform:"translateY(-100%) translateY(-6px)",zIndex:20}}>
+          <div style={{position:"absolute",bottom:"100%",right:12,marginBottom:6,zIndex:20}}>
             <ChatBubble msg={chatMsgs[myName].text} isMe={true} dying={chatMsgs[myName].dying}/>
           </div>
         )}
@@ -954,35 +922,14 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
             <span style={{fontWeight:800,fontSize:13}}>You</span>
             <span style={{fontSize:11,fontFamily:T.mono,background:"rgba(0,0,0,.06)",borderRadius:6,padding:"2px 7px",color:T.ink}}>{handTotal(myHand,wildCard)} pts</span>
           </div>
-          {isMyTurn
-            ?<div style={{display:"flex",gap:7}}>
-                <Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn>
-                <Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn>
-              </div>
-            :<div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>
-              </div>
-          }
+          {isMyTurn?<div style={{display:"flex",gap:7}}><Btn small variant="green" onClick={doSwap} disabled={!readySwap}>⇄ SWAP</Btn><Btn small variant="danger" onClick={doShow}>📢 SHOW</Btn></div>:<span style={{fontSize:11,color:T.muted,fontStyle:"italic"}}>Waiting...</span>}
         </div>
         <div style={{display:"flex",gap:7,justifyContent:"center",flexWrap:"nowrap",overflowX:"auto",paddingBottom:2}}>
           {myHand.map((card,idx)=><Card key={card.id} card={card} selected={dropIdxs.includes(idx)} onClick={isMyTurn?()=>toggleDrop(idx):undefined} badge={dropIdxs.includes(idx)?"Drop":null}/>)}
         </div>
-        {/* Quick chat floating button */}
-        <button onClick={()=>setShowQuickChat(true)} style={{
-          position:"absolute",bottom:20,right:14,
-          width:40,height:40,borderRadius:"50%",border:"none",
-          background:T.accent,color:"#fff",fontSize:18,cursor:"pointer",
-          boxShadow:"0 4px 16px rgba(37,99,235,.45)",
-          display:"flex",alignItems:"center",justifyContent:"center",
-          zIndex:15,transition:"transform .15s",
-        }}
-        onTouchStart={e=>e.currentTarget.style.transform="scale(.9)"}
-        onTouchEnd={e=>e.currentTarget.style.transform=""}
-        >💬</button>
       </div>
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
-      {showQuickChat&&<QuickChatPanel onSend={sendChat} onClose={()=>setShowQuickChat(false)}/>}
     </div>
   );
 }
