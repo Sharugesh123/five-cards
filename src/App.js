@@ -65,6 +65,16 @@ const BASE_CSS=`
   @keyframes bubbleIn{0%{opacity:0;transform:scale(.45) translateY(14px);}55%{transform:scale(1.12) translateY(-3px);}100%{opacity:1;transform:scale(1) translateY(0);}}
   @keyframes bubbleOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(.65) translateY(-16px);}}
   @keyframes chatSlide{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
+  @keyframes splashBg{0%{opacity:0;}100%{opacity:1;}}
+  @keyframes logoFloat{0%{transform:translateY(0px) rotate(-2deg);}50%{transform:translateY(-12px) rotate(2deg);}100%{transform:translateY(0px) rotate(-2deg);}}
+  @keyframes cardFlyIn{0%{opacity:0;transform:var(--from);}70%{opacity:1;}100%{opacity:1;transform:translateY(0) rotate(var(--rot)) scale(1);}}
+  @keyframes shimmer{0%{background-position:200% center;}100%{background-position:-200% center;}}
+  @keyframes particlePop{0%{opacity:1;transform:translate(0,0) scale(1);}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(0);}}
+  @keyframes suitSpin{0%{transform:rotate(0deg) scale(0);opacity:0;}40%{opacity:1;}100%{transform:rotate(360deg) scale(1);opacity:1;}}
+  @keyframes titleReveal{0%{opacity:0;letter-spacing:20px;filter:blur(8px);}100%{opacity:1;letter-spacing:-3px;filter:blur(0);}}
+  @keyframes subtitleFade{0%{opacity:0;transform:translateY(8px);}100%{opacity:1;transform:none;}}
+  @keyframes btnPulse{0%,100%{box-shadow:0 8px 32px rgba(37,99,235,.5),0 0 0 0 rgba(37,99,235,.3);}50%{box-shadow:0 8px 40px rgba(37,99,235,.7),0 0 0 14px rgba(37,99,235,0);}}
+  @keyframes splashFadeOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(1.06);}}
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
   .bubble-in{animation:bubbleIn .28s cubic-bezier(.22,1,.36,1) both;}
@@ -554,6 +564,158 @@ function RoundResult({round,roundResult,allPlayers,scores,scoreLimit,penaltyPoin
   );
 }
 
+// ── Splash Screen ─────────────────────────────────────────────────────────────
+const SPLASH_CARDS=[
+  {suit:"♠",rank:"5",rot:-18,from:"translate(-160px,-80px) rotate(-40deg) scale(.3)"},
+  {suit:"♥",rank:"K",rot:8,from:"translate(160px,-80px) rotate(40deg) scale(.3)"},
+  {suit:"♦",rank:"A",rot:-6,from:"translate(-180px,60px) rotate(-30deg) scale(.3)"},
+  {suit:"♣",rank:"J",rot:14,from:"translate(180px,60px) rotate(35deg) scale(.3)"},
+  {suit:"♥",rank:"7",rot:-22,from:"translate(0px,-180px) rotate(20deg) scale(.3)"},
+];
+const PARTICLES=Array.from({length:16},(_,i)=>({
+  dx:`${Math.cos(i/16*Math.PI*2)*80}px`,
+  dy:`${Math.sin(i/16*Math.PI*2)*80}px`,
+  color:i%4===0?"#F59E0B":i%4===1?"#EF4444":i%4===2?"#10B981":"#2563EB",
+  delay:`${(i*0.04).toFixed(2)}s`,
+}));
+
+function SplashScreen({onDone}){
+  const [phase,setPhase]=useState(0);
+  // phase 0=cards fly in, 1=logo assembles, 2=particles+title, 3=fading out
+  useEffect(()=>{
+    const t1=setTimeout(()=>setPhase(1),600);
+    const t2=setTimeout(()=>setPhase(2),1200);
+    const t3=setTimeout(()=>setPhase(3),2400);
+    const t4=setTimeout(()=>onDone(),2850);
+    return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4);};
+  },[onDone]);
+
+  return(
+    <div style={{
+      position:"fixed",inset:0,zIndex:999,
+      background:"linear-gradient(145deg,#0f0c29,#1a1a3e,#0d1b4b)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      animation:phase===3?"splashFadeOut .5s cubic-bezier(.22,1,.36,1) forwards":"splashBg .3s ease both",
+      overflow:"hidden",
+    }}>
+      <style>{BASE_CSS}</style>
+
+      {/* Background grid shimmer */}
+      <div style={{
+        position:"absolute",inset:0,
+        backgroundImage:"radial-gradient(circle at 1px 1px, rgba(255,255,255,.04) 1px, transparent 0)",
+        backgroundSize:"32px 32px",
+        animation:"splashBg .6s ease both",
+      }}/>
+
+      {/* Floating suit symbols behind */}
+      {["♠","♥","♦","♣"].map((s,i)=>(
+        <div key={s} style={{
+          position:"absolute",
+          fontSize:phase>=1?80:0,
+          color:s==="♥"||s==="♦"?"rgba(225,29,72,.15)":"rgba(37,99,235,.12)",
+          top:["8%","72%","18%","62%"][i],
+          left:["6%","75%","78%","4%"][i],
+          animation:phase>=1?`suitSpin ${1+i*.15}s cubic-bezier(.22,1,.36,1) ${i*.08}s both`:"none",
+          userSelect:"none",pointerEvents:"none",
+        }}>{s}</div>
+      ))}
+
+      {/* Flying cards arc */}
+      <div style={{position:"relative",width:320,height:220,marginBottom:20}}>
+        {SPLASH_CARDS.map((c,i)=>{
+          const isRed=c.suit==="♥"||c.suit==="♦";
+          return(
+            <div key={i} style={{
+              position:"absolute",
+              left:`${40+i*52}px`,top:`${i%2===0?30:55}px`,
+              width:56,height:80,borderRadius:10,
+              background:"rgba(255,255,255,.95)",
+              boxShadow:`0 ${phase>=1?12:4}px ${phase>=1?32:8}px rgba(0,0,0,.5)`,
+              display:"flex",flexDirection:"column",justifyContent:"space-between",
+              padding:"5px 6px",
+              "--from":c.from,"--rot":`${c.rot}deg`,
+              animation:phase>=1?`cardFlyIn .55s cubic-bezier(.22,1,.36,1) ${i*.07}s both`:"none",
+              transform:phase<1?c.from:`translateY(${i%2===0?0:10}px) rotate(${c.rot}deg)`,
+              opacity:phase>=1?1:0,
+              zIndex:i,
+            }}>
+              <div style={{fontSize:11,fontWeight:900,color:isRed?"#E11D48":"#1E3A8A",lineHeight:1,fontFamily:"monospace"}}>{c.rank}<br/><span style={{fontSize:9}}>{c.suit}</span></div>
+              <div style={{fontSize:22,textAlign:"center",color:isRed?"#E11D48":"#1E3A8A",lineHeight:1}}>{c.suit}</div>
+              <div style={{fontSize:11,fontWeight:900,color:isRed?"#E11D48":"#1E3A8A",lineHeight:1,textAlign:"right",transform:"rotate(180deg)",fontFamily:"monospace"}}>{c.rank}<br/><span style={{fontSize:9}}>{c.suit}</span></div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Big "5" logo with shimmer */}
+      <div style={{position:"relative",marginBottom:6}}>
+        {/* Particle burst */}
+        {phase>=2&&PARTICLES.map((p,i)=>(
+          <div key={i} style={{
+            position:"absolute",top:"50%",left:"50%",
+            width:6,height:6,borderRadius:"50%",
+            background:p.color,
+            "--dx":p.dx,"--dy":p.dy,
+            animation:`particlePop .7s ease-out ${p.delay} both`,
+            pointerEvents:"none",
+          }}/>
+        ))}
+        <div style={{
+          fontSize:120,fontWeight:900,lineHeight:1,
+          fontFamily:"'DM Sans',system-ui,sans-serif",
+          backgroundImage:phase>=2
+            ?"linear-gradient(90deg,#F59E0B,#EF4444,#2563EB,#10B981,#F59E0B)"
+            :"linear-gradient(90deg,#fff,rgba(255,255,255,.7))",
+          backgroundSize:"200% auto",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+          backgroundClip:"text",
+          animation:phase>=2
+            ?"shimmer 2s linear infinite, logoFloat 3s ease-in-out 0.5s infinite"
+            :phase>=1?"pop .5s cubic-bezier(.22,1,.36,1) both":"none",
+          filter:phase>=2?"drop-shadow(0 0 24px rgba(245,158,11,.5))":"none",
+          opacity:phase>=1?1:0,
+          letterSpacing:-4,
+        }}>5</div>
+        {/* Spade under the 5 */}
+        {phase>=1&&(
+          <div style={{
+            textAlign:"center",fontSize:28,marginTop:-8,
+            animation:"pop .4s .3s cubic-bezier(.22,1,.36,1) both",
+            color:"rgba(255,255,255,.9)",
+            filter:"drop-shadow(0 2px 8px rgba(255,255,255,.3))",
+          }}>♠</div>
+        )}
+      </div>
+
+      {/* Title */}
+      {phase>=2&&(
+        <div style={{
+          fontSize:32,fontWeight:900,color:"#fff",
+          letterSpacing:-1,lineHeight:1,
+          animation:"titleReveal .5s cubic-bezier(.22,1,.36,1) both",
+          textShadow:"0 2px 20px rgba(37,99,235,.5)",
+        }}>5 CARDS</div>
+      )}
+      {phase>=2&&(
+        <div style={{
+          fontSize:11,color:"rgba(255,255,255,.5)",
+          letterSpacing:4,textTransform:"uppercase",marginTop:6,
+          animation:"subtitleFade .5s .2s ease both",
+        }}>Swap · Claim · Survive</div>
+      )}
+
+      {/* Tap to skip */}
+      <div onClick={()=>onDone()} style={{
+        position:"absolute",bottom:32,
+        fontSize:11,color:"rgba(255,255,255,.25)",
+        letterSpacing:2,textTransform:"uppercase",cursor:"pointer",
+        animation:"subtitleFade 1s 1s ease both",
+      }}>Tap to skip</div>
+    </div>
+  );
+}
+
 // ── Home Screen ───────────────────────────────────────────────────────────────
 function HomeScreen({onPlayAI,onPlayFriends}){
   const [players,setPlayers]=useState(2);
@@ -570,11 +732,26 @@ function HomeScreen({onPlayAI,onPlayFriends}){
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",alignItems:"center",padding:"0 20px 40px",overflowX:"hidden"}}>
       <style>{BASE_CSS}</style>
 
-      {/* Hero */}
-      <div style={{textAlign:"center",padding:"48px 0 32px"}}>
-        <div style={{fontSize:56,marginBottom:8,animation:"pop .5s both"}}>🃏</div>
-        <h1 style={{fontWeight:900,fontSize:38,color:T.ink,margin:0,letterSpacing:-2,lineHeight:1}}>5 CARDS</h1>
-        <p style={{fontSize:11,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"8px 0 0"}}>Swap · Claim · Survive</p>
+      {/* Hero — compact after splash */}
+      <div style={{textAlign:"center",padding:"32px 0 24px",animation:"fadeUp .5s cubic-bezier(.22,1,.36,1) both"}}>
+        <div style={{
+          display:"inline-flex",alignItems:"center",justifyContent:"center",
+          width:72,height:72,borderRadius:20,
+          background:"linear-gradient(145deg,#1E3A8A,#2563EB)",
+          boxShadow:"0 8px 28px rgba(37,99,235,.45),0 2px 8px rgba(0,0,0,.2)",
+          marginBottom:12,position:"relative",overflow:"hidden",
+        }}>
+          <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,rgba(255,255,255,.18) 0%,transparent 60%)",borderRadius:20}}/>
+          <span style={{
+            fontSize:44,fontWeight:900,lineHeight:1,
+            fontFamily:"'DM Sans',system-ui",letterSpacing:-2,
+            background:"linear-gradient(160deg,#F59E0B,#FBBF24)",
+            WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",
+          }}>5</span>
+          <span style={{position:"absolute",bottom:6,fontSize:14,color:"rgba(255,255,255,.9)"}}>♠</span>
+        </div>
+        <h1 style={{fontWeight:900,fontSize:30,color:T.ink,margin:0,letterSpacing:-1.5,lineHeight:1,animation:"fadeUp .5s .08s both"}}>5 CARDS</h1>
+        <p style={{fontSize:10,color:T.muted,letterSpacing:3,textTransform:"uppercase",margin:"6px 0 0",animation:"fadeUp .5s .16s both"}}>Swap · Claim · Survive</p>
       </div>
 
       <div style={{width:"100%",maxWidth:380}}>
@@ -1399,11 +1576,12 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
 
 // ── App Root ──────────────────────────────────────────────────────────────────
 export default function App(){
-  const [screen,setScreen]=useState("home");
+  const [screen,setScreen]=useState("splash");
   const [config,setConfig]=useState({players:["You","Muthu"],limit:300,penalty:50,roomCode:null,myName:null});
   return(
     <>
       <Styles/>
+      {screen==="splash"&&<SplashScreen onDone={()=>setScreen("home")}/>}
       {screen==="home"&&(
         <HomeScreen
           onPlayAI={(n,l,p)=>{
