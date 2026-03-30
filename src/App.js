@@ -3,10 +3,50 @@ import { useState, useEffect, useRef, useCallback, memo } from "react";
 
 // ── Firebase REST helpers ──────────────────────────────────────────────────────
 const FB = "https://five-cards-f8dcc-default-rtdb.firebaseio.com";
-async function dbSet(key,data){const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});if(!r.ok)throw new Error(`Write ${r.status}`);return r.json();}
-async function dbGet(key){const r=await fetch(`${FB}/${key}.json`);if(!r.ok)throw new Error(`Read ${r.status}`);return r.json();}
-async function dbMerge(key,u){const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});if(!r.ok)throw new Error(`Merge ${r.status}`);return r.json();}
-function dbListen(key,cb){let stopped=false,lastJson=null;async function poll(){if(stopped)return;try{const r=await fetch(`${FB}/${key}.json`);if(r.ok){const t=await r.text();if(t!==lastJson){lastJson=t;try{cb(JSON.parse(t));}catch(_){}}}}catch(_){}if(!stopped)setTimeout(poll,1500);}poll();return()=>{stopped=true;};}
+const AUTH = "?auth=";// no auth needed for public rules
+
+// Adaptive poll: starts at 400ms, backs off to 1200ms when idle, snaps back on change
+function dbListen(key,cb){
+  let stopped=false,lastJson=null,interval=400,idleCount=0,timer=null;
+  async function poll(){
+    if(stopped)return;
+    try{
+      const r=await fetch(`${FB}/${key}.json`);
+      if(r.ok){
+        const t=await r.text();
+        if(t!==lastJson){
+          lastJson=t;idleCount=0;interval=400;// snap fast on change
+          try{cb(JSON.parse(t));}catch(_){}
+        }else{
+          idleCount++;
+          // Back off gradually: 400→600→800→1000→1200 max
+          if(idleCount>3)interval=Math.min(1200,interval+200);
+        }
+      }
+    }catch(_){interval=800;}// slow down on error
+    if(!stopped)timer=setTimeout(poll,interval);
+  }
+  poll();
+  return()=>{stopped=true;clearTimeout(timer);};
+}
+
+// Write helpers — fire-and-forget with optimistic local echo
+async function dbSet(key,data){
+  const r=await fetch(`${FB}/${key}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
+  if(!r.ok)throw new Error(`Write ${r.status}`);
+  return r.json();
+}
+async function dbGet(key){
+  const r=await fetch(`${FB}/${key}.json`);
+  if(!r.ok)throw new Error(`Read ${r.status}`);
+  return r.json();
+}
+// dbPush: PUT instead of PATCH for full game state (avoids Firebase merge overhead)
+async function dbMerge(key,u){
+  const r=await fetch(`${FB}/${key}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(u)});
+  if(!r.ok)throw new Error(`Merge ${r.status}`);
+  return r.json();
+}
 
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
@@ -714,6 +754,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const unsubChatRef=useRef(null);
   const prevTurnRef=useRef(null);
   const timerRef=useRef(null);
+  const gsRef=useRef(null);// mirrors gs for optimistic writes
+  const writingRef=useRef(false);// suppress echo during own writes
   // Use a ref-wrapped setter so the dbListen closure never goes stale
   const showChatBubble=useCallback((name,text)=>{
     clearTimeout(chatTimersRef.current[name+"_die"]);
@@ -737,13 +779,17 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     if(cp!==myName)return;
     vibrate([300]);
     const next=(gs.turnIdx+1)%gs.activePlayers.length;
-    dbMerge(`rooms/${roomCode}/gameState`,{turnIdx:next,lastAction:Date.now()});
+    const skipUpdate={...gsRef.current,turnIdx:next,lastAction:Date.now()};
+    gsRef.current=skipUpdate;setGs(skipUpdate);
+    dbSet(`rooms/${roomCode}/gameState`,skipUpdate).catch(()=>{});
   },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
     const unsub=dbListen(`rooms/${roomCode}/gameState`,g=>{
       if(!g)return;
-      setGs(g);
+      // Skip echo of our own optimistic write for 600ms
+      if(writingRef.current){gsRef.current=g;return;}
+      gsRef.current=g;setGs(g);
       const cp=g.activePlayers[g.turnIdx];
       const tk=`${g.round||1}_${g.turnIdx}`;
       if(cp===myName&&prevTurnRef.current!==tk){
@@ -789,12 +835,19 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const allPlayers=[...activePlayers,...(eliminated||[])];
   const sl=scoreLimit||300;
 
-  async function pushGs(u){await dbMerge(`rooms/${roomCode}/gameState`,u);}
+  // pushGs: merge update into current gs then PUT the whole doc — avoids Firebase PATCH latency
+  async function pushGs(u){
+    const merged={...gsRef.current,...u,
+      hands:u.hands?{...gsRef.current?.hands,...u.hands}:gsRef.current?.hands,
+    };
+    gsRef.current=merged;// optimistic local ref
+    await dbSet(`rooms/${roomCode}/gameState`,merged);
+  }
   function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
   function selPile(){if(!isMyTurn||!pile?.length)return;setDrawFrom(p=>p==="pile"?null:"pile");}
   function toggleDrop(idx){if(!isMyTurn)return;setDropIdxs(p=>{if(p.includes(idx))return p.filter(i=>i!==idx);if(p.length>0&&myHand[p[0]].rank!==myHand[idx].rank){setMsg("Same rank only for multi-drop!");return p;}return[...p,idx];});}
 
-  async function doSwap(){
+  function doSwap(){
     if(!drawFrom||!dropIdxs.length)return;
     const dropping=dropIdxs.map(i=>myHand[i]);
     let drew,ns=[...stock],np=[...pile];
@@ -803,11 +856,19 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     np=[...np,...dropping];
     clearInterval(timerRef.current);setShowContinue(false);
     const next=(turnIdx+1)%activePlayers.length;
-    await pushGs({stock:ns,pile:np,hands:{...hands,[myName]:[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew]},turnIdx:next,lastAction:Date.now()});
+    const newHand=[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew];
+    // Optimistic: update UI instantly, write to Firebase in background
+    const update={stock:ns,pile:np,hands:{...hands,[myName]:newHand},turnIdx:next,lastAction:Date.now()};
+    const merged={...gsRef.current,...update,hands:{...gsRef.current?.hands,[myName]:newHand}};
+    gsRef.current=merged;
+    setGs(merged);// instant UI update — no waiting for Firebase round-trip
     setDrawFrom(null);setDropIdxs([]);
+    setMsg("");
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+    dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
 
-  async function doShow(){
+  function doShow(){
     if(!isMyTurn)return;
     clearInterval(timerRef.current);setShowContinue(false);
     const wc=wildCard||null,pen=penalty||50;
@@ -823,14 +884,27 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const winner=newActive.length<=1?newActive[0]||activePlayers[0]:null;
     const gained={};activePlayers.forEach(n=>{gained[n]=(ns[n]||0)-(scores[n]||0);});
     const hist=[...(gs.history||[]),{round:round||1,winner:clWon?myName:"❌",gained}];
-    await pushGs({scores:ns,eliminated:newElim,activePlayers:newActive,roundResult:{results,claimerName:myName,claimerWon:clWon,claimerPts:clPts,lowestPts:lowPts,justElim,newScores:ns,shown:false},history:hist,gameWinner:winner,lastAction:Date.now()});
+    const update={scores:ns,eliminated:newElim,activePlayers:newActive,
+      roundResult:{results,claimerName:myName,claimerWon:clWon,claimerPts:clPts,lowestPts:lowPts,justElim,newScores:ns,shown:false},
+      history:hist,gameWinner:winner,lastAction:Date.now()};
+    const merged={...gsRef.current,...update};
+    gsRef.current=merged;
+    setGs(merged);// instant result screen — no waiting
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+    dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
 
-  async function nextRound(){
+  function nextRound(){
     const ap=gs.activePlayers,nr=(round||1)+1,allP=gs.allPlayers||ap;
     const d=shuffle(makeDeck()),wc=d[0],dr=d.slice(1);
     const h={};let cur=0;for(const n of ap){h[n]=dr.slice(cur,cur+5);cur+=5;}
-    await pushGs({stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,turnIdx:nr%ap.length,round:nr,roundResult:null,lastAction:Date.now(),allPlayers:allP});
+    const update={stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,
+      turnIdx:nr%ap.length,round:nr,roundResult:null,lastAction:Date.now(),allPlayers:allP};
+    const merged={...gsRef.current,...update};
+    gsRef.current=merged;
+    setGs(merged);// instant next round
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+    dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
 
   if(gameWinner)return<GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
@@ -958,6 +1032,17 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [wildCard,setWildCard]=useState(null);
   const [history,setHistory]=useState([]);
   const [timeLeft,setTimeLeft]=useState(30);
+  const [chatOpen,setChatOpen]=useState(false);
+  const [myChatMsg,setMyChatMsg]=useState(null);
+  const myChatTimer=useRef(null);
+
+  function sendLocalChat(text){
+    clearTimeout(myChatTimer.current);
+    setMyChatMsg({text,dying:false});
+    setChatOpen(false);
+    myChatTimer.current=setTimeout(()=>setMyChatMsg(p=>p?{...p,dying:true}:p),2700);
+    setTimeout(()=>setMyChatMsg(null),3100);
+  }
 
   const aiTimerRef=useRef(null);
   const turnTimerRef=useRef(null);
@@ -1136,6 +1221,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
         </div>
         <div style={{display:"flex",gap:7,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
+          <Btn small variant="ghost" onClick={()=>setChatOpen(p=>!p)} style={{background:chatOpen?"rgba(37,99,235,.12)":"rgba(0,0,0,.06)",color:chatOpen?T.accent:T.ink}}>💬</Btn>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
@@ -1145,6 +1231,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
         {allPlayers.map(n=><ScoreChip key={n} name={n} score={scores[n]||0} limit={scoreLimit} isActive={active[turnIdx]===n} isElim={eliminated.includes(n)} isYou={n===YOU}/>)}
       </div>
+      <ChatSlider visible={chatOpen} onSend={sendLocalChat}/>
       {/* ── Opponents row — horizontal across top ── */}
       <div style={{display:"flex",gap:8,justifyContent:"center",padding:"4px 12px 0",flexWrap:"wrap"}}>
         {active.filter(n=>n!==YOU).map(name=>{
@@ -1202,7 +1289,12 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       </div>
 
       {/* ── My hand — pinned at bottom, no overflow ── */}
-      <div style={{background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 14px",marginTop:"auto"}}>
+      <div style={{position:"relative",background:T.surface,backdropFilter:"blur(16px)",borderTop:"1px solid rgba(0,0,0,.07)",padding:"10px 14px 14px",marginTop:"auto"}}>
+        {myChatMsg&&(
+          <div style={{position:"absolute",bottom:"100%",right:12,marginBottom:6,zIndex:20}}>
+            <ChatBubble msg={myChatMsg.text} isMe={true} dying={myChatMsg.dying}/>
+          </div>
+        )}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontWeight:800,fontSize:13}}>You</span>
