@@ -62,8 +62,13 @@ const BASE_CSS=`
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
   @keyframes pop{0%{transform:scale(.85);}60%{transform:scale(1.06);}100%{transform:none;}}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+  @keyframes bubbleIn{0%{opacity:0;transform:scale(.45) translateY(14px);}55%{transform:scale(1.12) translateY(-3px);}100%{opacity:1;transform:scale(1) translateY(0);}}
+  @keyframes bubbleOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(.65) translateY(-16px);}}
+  @keyframes chatSlide{from{opacity:0;transform:translateY(100%);}to{opacity:1;transform:translateY(0);}}
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
+  .bubble-in{animation:bubbleIn .28s cubic-bezier(.22,1,.36,1) both;}
+  .bubble-out{animation:bubbleOut .22s ease-in both;}
 `;
 
 // ── Game constants ────────────────────────────────────────────────────────────
@@ -203,63 +208,133 @@ const FanCards=memo(({count=5})=>{
 });
 
 // ── Chat system ───────────────────────────────────────────────────────────────
-const QUICK_MSGS=[
-  {label:"👋",text:"👋"},{label:"😂",text:"😂"},{label:"🔥",text:"🔥"},
-  {label:"😱",text:"😱"},{label:"😤",text:"😤"},{label:"🙏",text:"🙏"},
-  {label:"GG",text:"GG!"},{label:"Noice",text:"Nice one! 👌"},
-  {label:"Luck",text:"Lucky! 😏"},{label:"Easy",text:"Too easy 😎"},
-  {label:"Oops",text:"Oops! 😅"},{label:"Hurry",text:"Hurry up! ⏰"},
+// ── Carrom Pool-style Chat ────────────────────────────────────────────────────
+// Two rows: top = emojis (instant tap), bottom = phrases (scroll)
+const EMOJIS=["👋","😂","🔥","😱","😤","🙏","👏","😎","🤣","💪","😬","🏆"];
+const PHRASES=[
+  {s:"GG!",l:"GG!"},
+  {s:"Nice 👌",l:"Nice one! 👌"},
+  {s:"Lucky 😏",l:"Lucky! 😏"},
+  {s:"Easy 😎",l:"Too easy 😎"},
+  {s:"Oops 😅",l:"Oops! 😅"},
+  {s:"Hurry ⏰",l:"Hurry up! ⏰"},
+  {s:"Noice 🎉",l:"Noice! 🎉"},
+  {s:"Unlucky 😢",l:"Unlucky! 😢"},
 ];
 
+// Floating speech bubble — Carrom Pool style
 const ChatBubble=memo(({msg,isMe,dying})=>{
   if(!msg)return null;
+  const big=msg.length<=2;// emoji-only → larger
   return(
     <div className={dying?"bubble-out":"bubble-in"} style={{
-      position:"absolute",bottom:"calc(100% + 8px)",
-      ...(isMe?{right:0}:{left:0}),
-      background:isMe?T.accent:"rgba(255,255,255,.97)",
-      color:isMe?"#fff":T.ink,
-      borderRadius:isMe?"16px 16px 4px 16px":"16px 16px 16px 4px",
-      padding:"6px 11px",fontSize:13,fontWeight:600,maxWidth:160,
-      whiteSpace:"pre-wrap",wordBreak:"break-word",
-      boxShadow:"0 4px 16px rgba(0,0,0,.18)",
-      border:isMe?"none":"1px solid rgba(0,0,0,.07)",
-      zIndex:20,pointerEvents:"none",lineHeight:1.3,
+      position:"absolute",
+      bottom:"calc(100% + 6px)",
+      ...(isMe?{right:4}:{left:4}),
+      background:isMe?"linear-gradient(135deg,#2563EB,#1d4ed8)":"rgba(255,255,255,.98)",
+      color:isMe?"#fff":"#111218",
+      borderRadius:isMe?"18px 18px 3px 18px":"18px 18px 18px 3px",
+      padding:big?"4px 8px":"6px 12px",
+      fontSize:big?28:12,
+      fontWeight:big?400:700,
+      maxWidth:150,lineHeight:big?1:1.35,
+      whiteSpace:"nowrap",
+      boxShadow:isMe
+        ?"0 4px 20px rgba(37,99,235,.45),0 1px 4px rgba(0,0,0,.2)"
+        :"0 4px 16px rgba(0,0,0,.18),0 1px 3px rgba(0,0,0,.1)",
+      border:isMe?"none":"1.5px solid rgba(255,255,255,.95)",
+      zIndex:30,pointerEvents:"none",
+      letterSpacing:isMe&&!big?".3px":0,
     }}>{msg}</div>
   );
 });
 
-// Slim horizontal scrollable strip — always visible, never blocks game
-function ChatSlider({onSend,visible}){
-  if(!visible)return null;
+// Carrom Pool chat tray — pops up from bottom-right, two rows, instant tap
+function CarromChat({onSend,onClose}){
   return(
-    <div className="chat-slider-strip" style={{
-      display:"flex",alignItems:"center",gap:6,
-      overflowX:"auto",overflowY:"hidden",flexShrink:0,
-      padding:"6px 10px",
-      scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
-      animation:"chatSlide .18s ease both",
-      background:"rgba(255,255,255,.68)",
-      backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",
-      borderBottom:"1px solid rgba(0,0,0,.07)",
+    <div onClick={onClose} style={{
+      position:"fixed",inset:0,zIndex:140,
+      // No dim — fully transparent overlay so game stays visible
     }}>
-      {QUICK_MSGS.map(({label,text})=>(
-        <button key={label}
-          onPointerDown={e=>{e.currentTarget.style.transform="scale(.85)";e.currentTarget.style.background=T.accent;e.currentTarget.style.color="#fff";e.currentTarget.style.borderColor=T.accent;}}
-          onPointerUp={e=>{e.currentTarget.style.transform="";e.currentTarget.style.background="rgba(255,255,255,.9)";e.currentTarget.style.color=T.ink;e.currentTarget.style.borderColor="rgba(0,0,0,.1)";onSend(text);}}
-          onPointerLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.background="rgba(255,255,255,.9)";e.currentTarget.style.color=T.ink;e.currentTarget.style.borderColor="rgba(0,0,0,.1)";}}
-          style={{
-            flexShrink:0,padding:"4px 12px",borderRadius:20,
-            border:"1.5px solid rgba(0,0,0,.1)",
-            background:"rgba(255,255,255,.9)",cursor:"pointer",
-            fontSize:text.length<=2?17:11,fontWeight:700,color:T.ink,
-            fontFamily:T.font,lineHeight:1,whiteSpace:"nowrap",
-            boxShadow:"0 1px 4px rgba(0,0,0,.06)",
-            transition:"transform .07s,background .07s,color .07s",
-            WebkitTapHighlightColor:"transparent",userSelect:"none",
-          }}>{label}</button>
-      ))}
+      <div onClick={e=>e.stopPropagation()} style={{
+        position:"fixed",bottom:0,left:0,right:0,
+        maxWidth:480,margin:"0 auto",
+        background:"rgba(15,15,20,.92)",
+        backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
+        borderRadius:"20px 20px 0 0",
+        borderTop:"1px solid rgba(255,255,255,.12)",
+        padding:"10px 10px 20px",
+        animation:"chatSlide .15s cubic-bezier(.22,1,.36,1) both",
+        boxShadow:"0 -12px 40px rgba(0,0,0,.5)",
+      }}>
+        {/* Header */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,padding:"0 4px"}}>
+          <span style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.5)",letterSpacing:1,textTransform:"uppercase"}}>Quick Chat</span>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:20,width:24,height:24,cursor:"pointer",color:"rgba(255,255,255,.6)",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        </div>
+        {/* Emoji row — large, instant tap */}
+        <div style={{display:"flex",gap:4,marginBottom:8,justifyContent:"space-around"}}>
+          {EMOJIS.map(e=>(
+            <button key={e}
+              onPointerDown={ev=>{ev.currentTarget.style.transform="scale(1.35)";ev.currentTarget.style.filter="brightness(1.3)";}}
+              onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.filter="";onSend(e);onClose();}}
+              onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.filter="";}}
+              style={{
+                fontSize:24,background:"none",border:"none",cursor:"pointer",
+                padding:"4px",borderRadius:10,
+                transition:"transform .08s",
+                WebkitTapHighlightColor:"transparent",userSelect:"none",
+                lineHeight:1,
+              }}>{e}</button>
+          ))}
+        </div>
+        {/* Phrase row — scrollable chips */}
+        <div style={{
+          display:"flex",gap:6,overflowX:"auto",
+          scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
+          padding:"2px 0",
+        }}>
+          {PHRASES.map(({s,l})=>(
+            <button key={s}
+              onPointerDown={ev=>{ev.currentTarget.style.background="rgba(37,99,235,.9)";ev.currentTarget.style.transform="scale(.95)";}}
+              onPointerUp={ev=>{ev.currentTarget.style.background="rgba(255,255,255,.12)";ev.currentTarget.style.transform="";onSend(l);onClose();}}
+              onPointerLeave={ev=>{ev.currentTarget.style.background="rgba(255,255,255,.12)";ev.currentTarget.style.transform="";}}
+              style={{
+                flexShrink:0,
+                padding:"6px 13px",borderRadius:20,
+                background:"rgba(255,255,255,.12)",
+                border:"1px solid rgba(255,255,255,.15)",
+                color:"rgba(255,255,255,.9)",
+                fontSize:11,fontWeight:700,
+                cursor:"pointer",whiteSpace:"nowrap",
+                fontFamily:T.font,
+                transition:"background .07s,transform .07s",
+                WebkitTapHighlightColor:"transparent",userSelect:"none",
+              }}>{s}</button>
+          ))}
+        </div>
+      </div>
     </div>
+  );
+}
+
+// Tiny floating 💬 FAB — always visible, one tap to open
+function ChatFAB({onClick,hasNew}){
+  return(
+    <button onClick={onClick} style={{
+      position:"fixed",bottom:100,right:12,
+      width:42,height:42,borderRadius:"50%",border:"none",
+      background:hasNew?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#2563EB,#1d4ed8)",
+      color:"#fff",fontSize:20,cursor:"pointer",
+      boxShadow:hasNew?"0 4px 20px rgba(16,185,129,.6)":"0 4px 16px rgba(37,99,235,.5)",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      zIndex:130,transition:"transform .1s,box-shadow .1s",
+      WebkitTapHighlightColor:"transparent",
+    }}
+    onPointerDown={e=>{e.currentTarget.style.transform="scale(.88)";}}
+    onPointerUp={e=>{e.currentTarget.style.transform="";}}
+    onPointerLeave={e=>{e.currentTarget.style.transform="";}}
+    >💬</button>
   );
 }
 
@@ -933,8 +1008,6 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       <div style={{padding:"6px 10px",display:"flex",gap:5,overflowX:"auto"}}>
         {activePlayers.map(n=><ScoreChip key={n} name={n} score={scores?.[n]||0} limit={sl} isActive={currentPlayer===n} isElim={(eliminated||[]).includes(n)} isYou={n===myName}/>)}
       </div>
-      {/* Chat slider strip */}
-      <ChatSlider visible={chatOpen} onSend={sendChat}/>
       {/* Opponents */}
       <div style={{display:"flex",gap:8,justifyContent:"center",padding:"6px 10px",flexWrap:"wrap"}}>
         {opponents.map(name=>{
@@ -1004,6 +1077,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       </div>
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
+      {/* Carrom Pool chat — FloatingFAB + tray */}
+      <ChatFAB onClick={()=>setChatOpen(p=>!p)} hasNew={false}/>
+      {chatOpen&&<CarromChat onSend={sendChat} onClose={()=>setChatOpen(false)}/>}
     </div>
   );
 }
@@ -1221,7 +1297,6 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
         </div>
         <div style={{display:"flex",gap:7,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
-          <Btn small variant="ghost" onClick={()=>setChatOpen(p=>!p)} style={{background:chatOpen?"rgba(37,99,235,.12)":"rgba(0,0,0,.06)",color:chatOpen?T.accent:T.ink}}>💬</Btn>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
@@ -1231,7 +1306,6 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       <div style={{padding:"8px 12px",display:"flex",gap:6,overflowX:"auto"}}>
         {allPlayers.map(n=><ScoreChip key={n} name={n} score={scores[n]||0} limit={scoreLimit} isActive={active[turnIdx]===n} isElim={eliminated.includes(n)} isYou={n===YOU}/>)}
       </div>
-      <ChatSlider visible={chatOpen} onSend={sendLocalChat}/>
       {/* ── Opponents row — horizontal across top ── */}
       <div style={{display:"flex",gap:8,justifyContent:"center",padding:"4px 12px 0",flexWrap:"wrap"}}>
         {active.filter(n=>n!==YOU).map(name=>{
@@ -1317,6 +1391,8 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
 
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
+      <ChatFAB onClick={()=>setChatOpen(p=>!p)} hasNew={false}/>
+      {chatOpen&&<CarromChat onSend={sendLocalChat} onClose={()=>setChatOpen(false)}/>}
     </div>
   );
 }
