@@ -77,6 +77,7 @@ const BASE_CSS=`
   @keyframes splashFadeOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(1.06);}}
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
+  @keyframes turnFlash{0%{opacity:0;transform:translate(-50%,-50%) scale(.7);}30%{opacity:1;transform:translate(-50%,-50%) scale(1.06);}70%{opacity:1;transform:translate(-50%,-50%) scale(1);}100%{opacity:0;transform:translate(-50%,-50%) scale(.95);}}
   .bubble-in{animation:bubbleIn .28s cubic-bezier(.22,1,.36,1) both;}
   .bubble-out{animation:bubbleOut .22s ease-in both;}
 `;
@@ -995,10 +996,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [msg,setMsg]=useState("Connecting...");
   const [showRules,setShowRules]=useState(false);
   const [showHistory,setShowHistory]=useState(false);
-  const [showGate,setShowGate]=useState(false);
-  const [showContinue,setShowContinue]=useState(false);
   const [newlyElim,setNewlyElim]=useState([]);
-  const [timeLeft,setTimeLeft]=useState(30);
+  const [timeLeft,setTimeLeft]=useState(20);
   const [chatOpen,setChatOpen]=useState(false);
   const [chatMsgs,setChatMsgs]=useState({});
   const chatTimersRef=useRef({});
@@ -1023,32 +1022,47 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     try{await dbSet(`rooms/${roomCode}/chat/${myName.replace(/[^a-zA-Z0-9]/g,"_")}`,{name:myName,text,ts:Date.now()});}catch(_){}
   }
 
-  function startTimer(){clearInterval(timerRef.current);setTimeLeft(20);timerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(timerRef.current);return 0;}return p-1;}),1000);}
+  // Start a fresh 20s countdown — called whenever our turn begins
+  function startTimer(){
+    clearInterval(timerRef.current);
+    setTimeLeft(20);
+    timerRef.current=setInterval(()=>{
+      setTimeLeft(p=>{
+        if(p<=1){clearInterval(timerRef.current);return 0;}
+        return p-1;
+      });
+    },1000);
+  }
 
+  // Auto-skip when timer hits 0 (our turn only)
   useEffect(()=>{
-    if(!gs||timeLeft!==0)return;
-    const cp=gs.activePlayers[gs.turnIdx];
-    if(cp!==myName)return;
-    vibrate([300]);
-    const next=(gs.turnIdx+1)%gs.activePlayers.length;
-    const skipUpdate={...gsRef.current,turnIdx:next,lastAction:Date.now()};
-    gsRef.current=skipUpdate;setGs(skipUpdate);
+    if(timeLeft!==0||!gsRef.current)return;
+    const g=gsRef.current;
+    if(g.activePlayers[g.turnIdx]!==myName)return;
+    vibrate([200,80,200]);
+    const next=(g.turnIdx+1)%g.activePlayers.length;
+    const skipUpdate={...g,turnIdx:next,lastAction:Date.now()};
+    gsRef.current=skipUpdate;
+    setGs({...skipUpdate});
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
     dbSet(`rooms/${roomCode}/gameState`,skipUpdate).catch(()=>{});
   },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
     const unsub=dbListen(`rooms/${roomCode}/gameState`,g=>{
       if(!g)return;
-      // Skip echo of our own optimistic write for 600ms
       if(writingRef.current){gsRef.current=g;return;}
-      gsRef.current=g;setGs(g);
-      const cp=g.activePlayers[g.turnIdx];
+      gsRef.current=g;
+      setGs({...g});// spread forces React re-render
+      const cp=g.activePlayers?.[g.turnIdx];
       const tk=`${g.round||1}_${g.turnIdx}`;
+      // Detect our turn — no gate, start immediately
       if(cp===myName&&prevTurnRef.current!==tk){
         prevTurnRef.current=tk;
-        setDrawFrom(null);setDropIdxs([]);setShowGate(true);
-        setMsg("Pick source · select drop · SWAP");
-        vibrate([100,50,100]);startTimer();
+        setDrawFrom(null);setDropIdxs([]);
+        setMsg("Your turn! Pick source · drop · SWAP");
+        vibrate([100,40,100]);
+        startTimer();// timer starts the moment turn arrives
       }
       if(g.roundResult?.justElim?.length>0&&!g.roundResult.shown)setNewlyElim(g.roundResult.justElim);
     });
@@ -1106,7 +1120,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     if(drawFrom==="stock"){drew=stock[0];ns=stock.slice(1);}
     else{drew=pile[pile.length-1];np=pile.slice(0,-1);}
     np=[...np,...dropping];
-    clearInterval(timerRef.current);setShowContinue(false);
+    clearInterval(timerRef.current);
     const next=(turnIdx+1)%activePlayers.length;
     const newHand=[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew];
     // Optimistic: update UI instantly, write to Firebase in background
@@ -1122,7 +1136,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 
   function doShow(){
     if(!isMyTurn)return;
-    clearInterval(timerRef.current);setShowContinue(false);
+    clearInterval(timerRef.current);
     const wc=wildCard||null,pen=penalty||50;
     const results=activePlayers.map(n=>({name:n,hand:hands[n]||[],pts:handTotal(hands[n]||[],wc)}));
     const clPts=handTotal(myHand,wc),lowPts=Math.min(...results.map(r=>r.pts));
@@ -1162,12 +1176,30 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   if(gameWinner)return<GameOverBanner winner={gameWinner} onPlayAgain={onQuit} onQuit={onQuit}/>;
   if(roundResult)return<RoundResult round={round} roundResult={roundResult} allPlayers={allPlayers} scores={scores} scoreLimit={sl} penaltyPoints={penalty||50} onNext={nextRound} canNext={isMyTurn||roundResult.claimerName===myName} history={gs.history||[]}/>;
   if(newlyElim.length>0)return<EliminatedBanner name={newlyElim[0]} onClose={()=>setNewlyElim([])}/>;
-  if(showGate&&isMyTurn)return<TurnGate playerName={myName} onReady={()=>{vibrate([100,50,100]);setShowGate(false);startTimer();}}/>;
   const opponents=activePlayers.filter(n=>n!==myName);
 
   return(
     <div style={{minHeight:"100vh",maxWidth:480,margin:"0 auto",background:T.bg,fontFamily:T.font,display:"flex",flexDirection:"column",position:"relative"}}>
       <style>{BASE_CSS}</style>
+      {/* ── YOUR TURN flash — non-blocking, auto-dismisses ── */}
+      {isMyTurn&&timeLeft===20&&(
+        <div style={{
+          position:"fixed",top:"50%",left:"50%",
+          transform:"translate(-50%,-50%)",
+          zIndex:50,pointerEvents:"none",
+          animation:"turnFlash .9s cubic-bezier(.22,1,.36,1) both",
+          textAlign:"center",
+        }}>
+          <div style={{
+            background:"linear-gradient(135deg,#2563EB,#1d4ed8)",
+            borderRadius:20,padding:"14px 32px",
+            boxShadow:"0 12px 48px rgba(37,99,235,.6),0 0 0 1px rgba(255,255,255,.15)",
+          }}>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.7)",letterSpacing:3,textTransform:"uppercase",marginBottom:3}}>Your Turn</div>
+            <div style={{fontSize:22,fontWeight:900,color:"#fff",letterSpacing:-.5}}>▶ Play Now!</div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div style={{background:T.surface,backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(0,0,0,.07)",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:10}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
