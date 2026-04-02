@@ -51,6 +51,189 @@ async function dbMerge(key,u){
 // ── Vibration ─────────────────────────────────────────────────────────────────
 function vibrate(p){if(navigator?.vibrate)navigator.vibrate(p);}
 
+
+// ── Sound Engine (Web Audio API — no files needed) ────────────────────────────
+const SFX = (() => {
+  let ctx = null;
+  let musicNodes = [];
+  let musicGain = null;
+  let musicPlaying = false;
+  let muted = false;
+
+  function getCtx() {
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+
+  function tone(freq, type, vol, dur, delay = 0, fadeOut = true) {
+    if (muted) return;
+    try {
+      const c = getCtx();
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.connect(gain); gain.connect(c.destination);
+      osc.type = type; osc.frequency.setValueAtTime(freq, c.currentTime + delay);
+      gain.gain.setValueAtTime(0, c.currentTime + delay);
+      gain.gain.linearRampToValueAtTime(vol, c.currentTime + delay + 0.01);
+      if (fadeOut) gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + delay + dur);
+      osc.start(c.currentTime + delay);
+      osc.stop(c.currentTime + delay + dur + 0.05);
+    } catch (_) {}
+  }
+
+  function noise(vol, dur, delay = 0) {
+    if (muted) return;
+    try {
+      const c = getCtx();
+      const buf = c.createBuffer(1, c.sampleRate * dur, c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = c.createBufferSource();
+      const gain = c.createGain();
+      const filter = c.createBiquadFilter();
+      src.buffer = buf; filter.type = "bandpass"; filter.frequency.value = 1200;
+      src.connect(filter); filter.connect(gain); gain.connect(c.destination);
+      gain.gain.setValueAtTime(vol, c.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + delay + dur);
+      src.start(c.currentTime + delay);
+    } catch (_) {}
+  }
+
+  const sounds = {
+    // Card swap — crisp swish
+    swap() {
+      noise(0.18, 0.08);
+      tone(520, "sine", 0.12, 0.12, 0.04);
+      tone(320, "sine", 0.08, 0.1, 0.1);
+    },
+    // Card select/tap
+    tap() {
+      noise(0.12, 0.04);
+      tone(680, "sine", 0.1, 0.08, 0.01);
+    },
+    // Your turn — bright ding
+    yourTurn() {
+      tone(660, "sine", 0.18, 0.15);
+      tone(880, "sine", 0.15, 0.18, 0.12);
+      tone(1100, "sine", 0.1, 0.22, 0.22);
+    },
+    // Win round — triumphant chord
+    win() {
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, "sine", 0.15, 0.5, i * 0.06));
+      tone(1047, "triangle", 0.2, 0.8, 0.28);
+    },
+    // Wrong show — fail buzzer
+    fail() {
+      tone(320, "sawtooth", 0.18, 0.15);
+      tone(200, "sawtooth", 0.2, 0.25, 0.12);
+      tone(140, "sawtooth", 0.15, 0.3, 0.28);
+    },
+    // Eliminated
+    eliminated() {
+      tone(440, "sawtooth", 0.15, 0.2);
+      tone(330, "sawtooth", 0.18, 0.25, 0.18);
+      tone(220, "sawtooth", 0.2, 0.4, 0.38);
+      tone(110, "square", 0.15, 0.5, 0.6);
+    },
+    // Timer warning (low time)
+    timerWarn() {
+      tone(880, "square", 0.1, 0.06);
+    },
+    // Game over / winner fanfare
+    gameWin() {
+      const melody = [523,659,784,659,784,1047];
+      melody.forEach((f, i) => tone(f, "sine", 0.18, 0.22, i * 0.14));
+      [523, 659, 784].forEach((f, i) => tone(f, "triangle", 0.14, 0.8, melody.length * 0.14 + i * 0.02));
+    },
+    // Chat send — soft pop
+    chat() {
+      tone(800, "sine", 0.08, 0.08);
+      tone(1000, "sine", 0.06, 0.06, 0.06);
+    },
+    // Deal cards
+    deal() {
+      [0, 0.07, 0.14, 0.21, 0.28].forEach(d => {
+        noise(0.1, 0.05, d);
+        tone(400 + Math.random() * 200, "sine", 0.07, 0.08, d);
+      });
+    },
+  };
+
+  // ── Looping card-game background music ──────────────────────────────────────
+  // A simple pentatonic loop using Web Audio oscillators
+  const THEME_NOTES = [261, 294, 330, 392, 440, 392, 330, 294, 261, 220, 247, 261];
+  const THEME_DUR   = [0.3, 0.2, 0.3, 0.4, 0.3, 0.2, 0.3, 0.2, 0.4, 0.3, 0.2, 0.5];
+
+  function startMusic() {
+    if (musicPlaying || muted) return;
+    musicPlaying = true;
+    try {
+      const c = getCtx();
+      musicGain = c.createGain();
+      musicGain.gain.value = 0.07;
+      // Reverb-like convolver for warmth
+      const conv = c.createConvolver();
+      const rBuf = c.createBuffer(2, c.sampleRate * 1.5, c.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = rBuf.getChannelData(ch);
+        for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+      }
+      conv.buffer = rBuf;
+      musicGain.connect(conv); conv.connect(c.destination);
+      musicGain.connect(c.destination);// dry signal
+
+      function scheduleLoop() {
+        if (!musicPlaying) return;
+        let t = c.currentTime + 0.05;
+        // Melody line
+        THEME_NOTES.forEach((freq, i) => {
+          const osc = c.createOscillator();
+          const g = c.createGain();
+          osc.type = "triangle";
+          osc.frequency.value = freq;
+          osc.connect(g); g.connect(musicGain);
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(0.4, t + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.001, t + THEME_DUR[i] * 0.85);
+          osc.start(t); osc.stop(t + THEME_DUR[i]);
+          musicNodes.push(osc);
+          t += THEME_DUR[i];
+        });
+        // Bass pulse every beat
+        [0, 0.5, 1.0, 1.5, 2.0, 2.5].forEach(beat => {
+          const bass = c.createOscillator();
+          const bg = c.createGain();
+          bass.type = "sine"; bass.frequency.value = 65;
+          bass.connect(bg); bg.connect(musicGain);
+          bg.gain.setValueAtTime(0, c.currentTime + 0.05 + beat);
+          bg.gain.linearRampToValueAtTime(0.6, c.currentTime + 0.07 + beat);
+          bg.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.35 + beat);
+          bass.start(c.currentTime + 0.05 + beat);
+          bass.stop(c.currentTime + 0.4 + beat);
+          musicNodes.push(bass);
+        });
+        const totalDur = THEME_DUR.reduce((a, b) => a + b, 0);
+        setTimeout(() => { if (musicPlaying) scheduleLoop(); }, (totalDur - 0.3) * 1000);
+      }
+      scheduleLoop();
+    } catch (_) {}
+  }
+
+  function stopMusic() {
+    musicPlaying = false;
+    try { musicNodes.forEach(n => { try { n.stop(); } catch (_) {} }); } catch (_) {}
+    musicNodes = [];
+  }
+
+  function setMuted(m) {
+    muted = m;
+    if (m) stopMusic();
+  }
+
+  return { ...sounds, startMusic, stopMusic, setMuted, isMuted: () => muted };
+})();
+
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const T={bg:"#F4F5F7",surface:"rgba(255,255,255,0.72)",border:"rgba(255,255,255,0.9)",ink:"#111218",muted:"#6B7280",accent:"#2563EB",red:"#EF4444",green:"#10B981",gold:"#F59E0B",suit_r:"#E11D48",suit_b:"#1E3A8A",shadow:"0 8px 32px rgba(0,0,0,0.10),0 1.5px 4px rgba(0,0,0,0.06)",glow_g:"0 0 0 2.5px #10B981,0 8px 24px rgba(16,185,129,0.25)",glow_y:"0 0 0 2.5px #F59E0B,0 8px 24px rgba(245,158,11,0.25)",font:"'DM Sans',system-ui,sans-serif",mono:"'DM Mono',monospace"};
 
@@ -101,6 +284,21 @@ function Styles(){
 }
 
 // ── Shared UI components ──────────────────────────────────────────────────────
+// ── Mute Button ───────────────────────────────────────────────────────────────
+function MuteBtn(){
+  const [muted,setMuted]=useState(false);
+  return(
+    <button onClick={()=>{const m=!muted;setMuted(m);SFX.setMuted(m);if(!m)SFX.startMusic();}}
+      style={{background:"rgba(0,0,0,.06)",border:"none",borderRadius:9,
+        padding:"7px 10px",cursor:"pointer",fontSize:14,
+        color:muted?"#EF4444":"#111218",fontFamily:"inherit",
+        transition:"all .15s",userSelect:"none",
+      }}
+      title={muted?"Unmute":"Mute"}
+    >{muted?"🔇":"🔊"}</button>
+  );
+}
+
 const Panel=memo(({children,style={}})=>(
   <div style={{background:T.surface,backdropFilter:"blur(16px)",WebkitBackdropFilter:"blur(16px)",border:`1.5px solid ${T.border}`,borderRadius:16,boxShadow:T.shadow,...style}}>{children}</div>
 ));
@@ -584,7 +782,8 @@ function SplashScreen({onDone}){
   const [phase,setPhase]=useState(0);
   // phase 0=cards fly in, 1=logo assembles, 2=particles+title, 3=fading out
   useEffect(()=>{
-    const t1=setTimeout(()=>setPhase(1),600);
+    // Kick audio context alive on first user interaction handled by splash
+    const t1=setTimeout(()=>{setPhase(1);SFX.deal();},600);
     const t2=setTimeout(()=>setPhase(2),1200);
     const t3=setTimeout(()=>setPhase(3),2400);
     const t4=setTimeout(()=>onDone(),2850);
@@ -1018,6 +1217,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 
   async function sendChat(text){
     showChatBubble(myName,text);
+    SFX.chat();
     setChatOpen(false);
     try{await dbSet(`rooms/${roomCode}/chat/${myName.replace(/[^a-zA-Z0-9]/g,"_")}`,{name:myName,text,ts:Date.now()});}catch(_){}
   }
@@ -1036,6 +1236,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
 
   // Auto-skip when timer hits 0 (our turn only)
   useEffect(()=>{
+    if(timeLeft===5)SFX.timerWarn();
     if(timeLeft!==0||!gsRef.current)return;
     const g=gsRef.current;
     if(g.activePlayers[g.turnIdx]!==myName)return;
@@ -1062,7 +1263,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         setDrawFrom(null);setDropIdxs([]);
         setMsg("Your turn! Pick source · drop · SWAP");
         vibrate([100,40,100]);
-        startTimer();// timer starts the moment turn arrives
+        SFX.yourTurn();
+        startTimer();
       }
       if(g.roundResult?.justElim?.length>0&&!g.roundResult.shown)setNewlyElim(g.roundResult.justElim);
     });
@@ -1081,6 +1283,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     unsubChatRef.current=chatUnsub;
     return()=>{if(unsubRef.current)unsubRef.current();if(unsubChatRef.current)unsubChatRef.current();clearInterval(timerRef.current);};
   },[roomCode,myName,showChatBubble]);// eslint-disable-line
+
+  // Start background music when screen mounts
+  useEffect(()=>{SFX.startMusic();return()=>SFX.stopMusic();},[]);// eslint-disable-line
 
   if(!gs)return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:T.font}}>
@@ -1109,9 +1314,9 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     gsRef.current=merged;// optimistic local ref
     await dbSet(`rooms/${roomCode}/gameState`,merged);
   }
-  function selStock(){if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");}
-  function selPile(){if(!isMyTurn||!pile?.length)return;setDrawFrom(p=>p==="pile"?null:"pile");}
-  function toggleDrop(idx){if(!isMyTurn)return;setDropIdxs(p=>{if(p.includes(idx))return p.filter(i=>i!==idx);if(p.length>0&&myHand[p[0]].rank!==myHand[idx].rank){setMsg("Same rank only for multi-drop!");return p;}return[...p,idx];});}
+  function selStock(){if(!isMyTurn)return;SFX.tap();setDrawFrom(p=>p==="stock"?null:"stock");}
+  function selPile(){if(!isMyTurn||!pile?.length)return;SFX.tap();setDrawFrom(p=>p==="pile"?null:"pile");}
+  function toggleDrop(idx){if(!isMyTurn)return;SFX.tap();setDropIdxs(p=>{if(p.includes(idx))return p.filter(i=>i!==idx);if(p.length>0&&myHand[p[0]].rank!==myHand[idx].rank){setMsg("Same rank only for multi-drop!");return p;}return[...p,idx];});}
 
   function doSwap(){
     if(!drawFrom||!dropIdxs.length)return;
@@ -1130,6 +1335,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     setGs(merged);// instant UI update — no waiting for Firebase round-trip
     setDrawFrom(null);setDropIdxs([]);
     setMsg("");
+    SFX.swap();
     writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
     dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
@@ -1155,7 +1361,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       history:hist,gameWinner:winner,lastAction:Date.now()};
     const merged={...gsRef.current,...update};
     gsRef.current=merged;
-    setGs(merged);// instant result screen — no waiting
+    setGs(merged);
+    if(clWon)SFX.win();else SFX.fail(); — no waiting
     writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
     dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
@@ -1208,6 +1415,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
+          <MuteBtn/>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
@@ -1345,7 +1553,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   useEffect(()=>{rrRef.current=roundResult;},[roundResult]);
   useEffect(()=>{gwRef.current=gameWinner;},[gameWinner]);
 
-  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(20);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
+  function startTurnTimer(){clearInterval(turnTimerRef.current);setTimeLeft(20);vibrate([100,50,100]);turnTimerRef.current=setInterval(()=>setTimeLeft(p=>{if(p===5)SFX.timerWarn();if(p<=1){clearInterval(turnTimerRef.current);return 0;}return p-1;}),1000);}
   useEffect(()=>()=>{clearInterval(turnTimerRef.current);clearTimeout(aiTimerRef.current);},[]);
 
   function deal(ap,roundNum){
@@ -1357,9 +1565,9 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     setWildCard(wc);setStock(dr.slice(cur+1));setPile([dr[cur]]);setHands(h);
     setTurnIdx(si);setDrawFrom(null);setDropIdxs([]);setRoundResult(null);
     setMsg(a[si]===YOU?"Pick source · select drop · SWAP":`${a[si]}'s turn...`);
-    if(a[si]===YOU)startTurnTimer();
+    if(a[si]===YOU){startTurnTimer();SFX.yourTurn();}
   }
-  useEffect(()=>{deal();},[]);// eslint-disable-line
+  useEffect(()=>{SFX.startMusic();SFX.deal();deal();return()=>SFX.stopMusic();},[]);// eslint-disable-line
 
   // Timer expiry: auto-skip immediately, no popup
   useEffect(()=>{
@@ -1427,6 +1635,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     const clPts=results.find(r=>r.name===claimerName)?.pts??Infinity;
     const clWon=clPts===lowPts;
     // Use functional update to avoid reading stale scores
+    SFX.deal();
     setScores(prev=>{
       const ns={...prev};
       if(clWon)results.forEach(r=>{if(r.name!==claimerName)ns[r.name]=(ns[r.name]||0)+r.pts;});
@@ -1436,8 +1645,9 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
       const justElim=a.filter(n=>ns[n]>=scoreLimit&&!eliminated.includes(n));
       const newElim=[...eliminated,...justElim];
       const newActive=a.filter(n=>!newElim.includes(n));
-      if(justElim.length>0){setEliminated(newElim);setActive(newActive);}
-      if(newActive.length<=1)setGameWinner(newActive[0]||a[0]);
+      if(justElim.length>0){setEliminated(newElim);setActive(newActive);SFX.eliminated();}
+      if(newActive.length<=1){setGameWinner(newActive[0]||a[0]);SFX.gameWin();}
+      if(clWon&&claimerName===YOU)SFX.win();else if(!clWon&&claimerName===YOU)SFX.fail();
       setRoundResult({results,claimerName,claimerWon:clWon,claimerPts:clPts,lowestPts:lowPts,newScores:ns,justElim});
       return ns;
     });
@@ -1449,11 +1659,12 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     else{const nr=round+1;setRoundResult(null);setRound(nr);deal(null,nr);}
   }
 
-  const selStock=useCallback(()=>{if(!isMyTurn)return;setDrawFrom(p=>p==="stock"?null:"stock");},[isMyTurn]);
-  const selPile=useCallback(()=>{if(!isMyTurn||!pileRef.current.length)return;setDrawFrom(p=>p==="pile"?null:"pile");},[isMyTurn]);
+  const selStock=useCallback(()=>{if(!isMyTurn)return;SFX.tap();setDrawFrom(p=>p==="stock"?null:"stock");},[isMyTurn]);
+  const selPile=useCallback(()=>{if(!isMyTurn||!pileRef.current.length)return;SFX.tap();setDrawFrom(p=>p==="pile"?null:"pile");},[isMyTurn]);
 
   function toggleDrop(idx){
     if(!isMyTurn)return;
+    SFX.tap();
     const hand=handsRef.current[YOU];
     setDropIdxs(p=>{
       if(p.includes(idx))return p.filter(i=>i!==idx);
@@ -1480,9 +1691,10 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
     clearInterval(turnTimerRef.current);
     const a=activeRef.current,tidx=turnIdxRef.current;
     const next=(tidx+1)%a.length;
+    SFX.swap();
     setTurnIdx(next);setDrawFrom(null);setDropIdxs([]);
     setMsg(a[next]===YOU?"Pick source · select drop · SWAP":`${a[next]}'s turn...`);
-    if(a[next]===YOU)startTurnTimer();
+    if(a[next]===YOU){startTurnTimer();SFX.yourTurn();}
   }
 
   function doShow(){if(!isMyTurn)return;clearInterval(turnTimerRef.current);handleClaim(YOU,handsRef.current[YOU],wildRef.current);}
@@ -1506,6 +1718,7 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
         </div>
         <div style={{display:"flex",gap:7,alignItems:"center"}}>
           {isMyTurn&&<TimerRing timeLeft={timeLeft}/>}
+          <MuteBtn/>
           <Btn small variant="ghost" onClick={()=>setShowHistory(true)}>📜</Btn>
           <Btn small variant="ghost" onClick={()=>setShowRules(true)}>Rules</Btn>
           <Btn small variant="outline" onClick={onQuit}>Exit</Btn>
