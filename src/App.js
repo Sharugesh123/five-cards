@@ -263,6 +263,14 @@ const BASE_CSS=`
   @keyframes turnFlash{0%{opacity:0;transform:translate(-50%,-50%) scale(.7);}30%{opacity:1;transform:translate(-50%,-50%) scale(1.06);}70%{opacity:1;transform:translate(-50%,-50%) scale(1);}100%{opacity:0;transform:translate(-50%,-50%) scale(.95);}}
   .bubble-in{animation:bubbleIn .28s cubic-bezier(.22,1,.36,1) both;}
   .bubble-out{animation:bubbleOut .22s ease-in both;}
+  @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg) scale(1);opacity:1;}100%{transform:translateY(110vh) rotate(720deg) scale(.5);opacity:0;}}
+  @keyframes trophyBounce{0%{transform:scale(0) rotate(-20deg);}50%{transform:scale(1.2) rotate(8deg);}70%{transform:scale(.92) rotate(-4deg);}100%{transform:scale(1) rotate(0deg);}}
+  @keyframes winnerNameSlide{0%{opacity:0;transform:translateY(30px) scale(.8);}60%{transform:translateY(-6px) scale(1.04);}100%{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes crownFloat{0%,100%{transform:translateY(0) rotate(-6deg);}50%{transform:translateY(-10px) rotate(6deg);}}
+  @keyframes starBurst{0%{opacity:0;transform:translate(-50%,-50%) scale(0) rotate(0deg);}50%{opacity:1;}100%{opacity:0;transform:translate(var(--sx),var(--sy)) scale(1.5) rotate(180deg);}}
+  @keyframes msgFadeIn{0%{opacity:0;transform:translateY(12px);}100%{opacity:1;transform:none;}}
+  @keyframes shimmerText{0%{background-position:200% center;}100%{background-position:-200% center;}}
+  @keyframes ringPulse{0%{transform:scale(.95);opacity:.6;}50%{transform:scale(1.05);opacity:1;}100%{transform:scale(.95);opacity:.6;}}
 `;
 
 // ── Game constants ────────────────────────────────────────────────────────────
@@ -625,18 +633,244 @@ function EliminatedBanner({name,onClose}){
   );
 }
 
+// ── Confetti particle ────────────────────────────────────────────────────────
+const CONFETTI_COLORS=["#F59E0B","#EF4444","#10B981","#2563EB","#8B5CF6","#EC4899","#F97316","#06B6D4"];
+const CONFETTI=Array.from({length:60},(_,i)=>({
+  id:i,
+  color:CONFETTI_COLORS[i%CONFETTI_COLORS.length],
+  left:`${Math.random()*100}%`,
+  delay:`${(Math.random()*2).toFixed(2)}s`,
+  dur:`${(2.5+Math.random()*2).toFixed(2)}s`,
+  size:Math.random()>0.5?10:6,
+  shape:Math.random()>0.5?"circle":"rect",
+  rot:`${Math.floor(Math.random()*360)}deg`,
+}));
+
+const WIN_MSGS=[
+  "🔥 Absolute Legend!",
+  "👑 Born to Win!",
+  "💪 Unstoppable!",
+  "🎯 Perfect Play!",
+  "😎 Too Easy!",
+  "🚀 Out of This World!",
+  "⚡ Lightning Fast!",
+  "🏅 Champion!",
+  "🎪 Card Wizard!",
+  "💎 Diamond Hands!",
+];
+
+const STARS=Array.from({length:8},(_,i)=>({
+  sx:`${Math.cos(i/8*Math.PI*2)*90}px`,
+  sy:`${Math.sin(i/8*Math.PI*2)*90}px`,
+  delay:`${i*0.08}s`,
+  emoji:["⭐","✨","💫","🌟","⚡","🔥","💥","🎊"][i],
+}));
+
 function GameOverBanner({winner,onPlayAgain,onQuit}){
+  const [phase,setPhase]=useState(0);
+  const [customMsg,setCustomMsg]=useState("");
+  const [msgSent,setMsgSent]=useState(false);
+  const [chosenMsg,setChosenMsg]=useState(WIN_MSGS[Math.floor(Math.random()*WIN_MSGS.length)]);
+  const [showMsgBox,setShowMsgBox]=useState(false);
+
+  useEffect(()=>{
+    const t1=setTimeout(()=>setPhase(1),100);
+    const t2=setTimeout(()=>setPhase(2),600);
+    const t3=setTimeout(()=>setPhase(3),1100);
+    return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);};
+  },[]);
+
+  function sendMsg(){
+    if(!customMsg.trim())return;
+    setChosenMsg(customMsg.trim());
+    setMsgSent(true);
+    setShowMsgBox(false);
+    SFX.chat();
+  }
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(8px)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <Panel style={{padding:"44px 40px",textAlign:"center",maxWidth:340,width:"92%"}}>
-        <div style={{fontSize:64,marginBottom:12}}>🏆</div>
-        <div style={{fontWeight:900,fontSize:28,marginBottom:4,letterSpacing:-.5}}>Winner!</div>
-        <div style={{fontWeight:700,fontSize:20,color:T.accent,marginBottom:28}}>{winner}</div>
-        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-          <Btn variant="ghost" onClick={onQuit}>Quit</Btn>
-          <Btn onClick={onPlayAgain}>Play Again</Btn>
-        </div>
-      </Panel>
+    <div style={{
+      position:"fixed",inset:0,zIndex:300,
+      background:"linear-gradient(145deg,#0f0c29 0%,#1a1a3e 50%,#0d1b4b 100%)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      overflow:"hidden",fontFamily:T.font,
+    }}>
+      {/* Confetti rain */}
+      {CONFETTI.map(c=>(
+        <div key={c.id} style={{
+          position:"absolute",
+          left:c.left,top:"-20px",
+          width:c.size,height:c.shape==="circle"?c.size:c.size*1.6,
+          borderRadius:c.shape==="circle"?"50%":"2px",
+          background:c.color,
+          transform:`rotate(${c.rot})`,
+          animation:`confettiFall ${c.dur} ${c.delay} ease-in infinite`,
+          opacity:.9,
+          zIndex:1,
+          pointerEvents:"none",
+        }}/>
+      ))}
+
+      {/* Background glow rings */}
+      <div style={{position:"absolute",width:400,height:400,borderRadius:"50%",
+        border:"1px solid rgba(245,158,11,.15)",
+        animation:"ringPulse 2s ease-in-out infinite",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:280,height:280,borderRadius:"50%",
+        border:"1px solid rgba(245,158,11,.25)",
+        animation:"ringPulse 2s .4s ease-in-out infinite",pointerEvents:"none"}}/>
+
+      {/* Main card */}
+      <div style={{
+        position:"relative",zIndex:10,
+        background:"rgba(255,255,255,.06)",
+        backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
+        border:"1.5px solid rgba(255,255,255,.15)",
+        borderRadius:28,padding:"36px 32px 28px",
+        textAlign:"center",width:"88%",maxWidth:360,
+        boxShadow:"0 32px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.08)",
+      }}>
+
+        {/* Star burst */}
+        {phase>=2&&STARS.map((s,i)=>(
+          <div key={i} style={{
+            position:"absolute",top:"30%",left:"50%",fontSize:18,
+            "--sx":s.sx,"--sy":s.sy,
+            animation:`starBurst .8s ${s.delay} cubic-bezier(.22,1,.36,1) both`,
+            pointerEvents:"none",zIndex:5,
+          }}>{s.emoji}</div>
+        ))}
+
+        {/* Crown */}
+        <div style={{
+          fontSize:42,marginBottom:4,
+          animation:phase>=1?"crownFloat 2.5s ease-in-out infinite":"none",
+          opacity:phase>=1?1:0,
+          transition:"opacity .3s",
+        }}>👑</div>
+
+        {/* Trophy */}
+        <div style={{
+          fontSize:80,lineHeight:1,marginBottom:8,
+          animation:phase>=1?"trophyBounce .7s cubic-bezier(.22,1,.36,1) both":"none",
+          filter:phase>=2?"drop-shadow(0 0 28px rgba(245,158,11,.8))":"none",
+          transition:"filter .5s",
+        }}>🏆</div>
+
+        {/* WINNER label */}
+        {phase>=1&&(
+          <div style={{
+            fontSize:12,fontWeight:800,letterSpacing:5,textTransform:"uppercase",
+            color:"rgba(255,255,255,.5)",marginBottom:6,
+            animation:"winnerNameSlide .5s cubic-bezier(.22,1,.36,1) both",
+          }}>Winner</div>
+        )}
+
+        {/* Winner name — shimmer gradient */}
+        {phase>=2&&(
+          <div style={{
+            fontSize:34,fontWeight:900,letterSpacing:-1,lineHeight:1,marginBottom:4,
+            backgroundImage:"linear-gradient(90deg,#F59E0B,#FBBF24,#F59E0B,#FCD34D,#F59E0B)",
+            backgroundSize:"200% auto",
+            WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text",
+            animation:"shimmerText 2s linear infinite, winnerNameSlide .5s .1s cubic-bezier(.22,1,.36,1) both",
+          }}>{winner}</div>
+        )}
+
+        {/* Win message */}
+        {phase>=3&&(
+          <div style={{
+            fontSize:14,fontWeight:700,color:"rgba(255,255,255,.75)",
+            marginBottom:20,animation:"msgFadeIn .5s ease both",
+            letterSpacing:.3,
+          }}>{chosenMsg}</div>
+        )}
+
+        {/* Message box */}
+        {showMsgBox&&(
+          <div style={{marginBottom:16,animation:"msgFadeIn .25s ease both"}}>
+            <div style={{
+              display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",justifyContent:"center",
+            }}>
+              {WIN_MSGS.slice(0,5).map(m=>(
+                <button key={m} onClick={()=>{setChosenMsg(m);setShowMsgBox(false);SFX.chat();}}
+                  style={{
+                    fontSize:10,fontWeight:700,padding:"4px 10px",borderRadius:20,
+                    border:"1px solid rgba(255,255,255,.2)",
+                    background:"rgba(255,255,255,.08)",color:"rgba(255,255,255,.8)",
+                    cursor:"pointer",fontFamily:T.font,whiteSpace:"nowrap",
+                    transition:"background .12s",
+                  }}
+                  onPointerEnter={e=>e.currentTarget.style.background="rgba(245,158,11,.3)"}
+                  onPointerLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.08)"}
+                >{m}</button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input
+                value={customMsg}
+                onChange={e=>setCustomMsg(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&sendMsg()}
+                placeholder="Type your message..."
+                maxLength={40}
+                style={{
+                  flex:1,padding:"9px 12px",borderRadius:12,
+                  border:"1.5px solid rgba(255,255,255,.2)",
+                  background:"rgba(255,255,255,.08)",
+                  color:"#fff",fontSize:12,fontFamily:T.font,outline:"none",
+                }}
+              />
+              <button onClick={sendMsg} style={{
+                padding:"9px 14px",borderRadius:12,border:"none",
+                background:T.accent,color:"#fff",fontWeight:700,fontSize:12,
+                cursor:"pointer",fontFamily:T.font,
+              }}>Send</button>
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {phase>=3&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10,animation:"msgFadeIn .5s .2s ease both"}}>
+            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+              <button onClick={()=>setShowMsgBox(p=>!p)} style={{
+                flex:1,padding:"11px",borderRadius:14,border:"1.5px solid rgba(255,255,255,.2)",
+                background:"rgba(255,255,255,.08)",color:"rgba(255,255,255,.85)",
+                fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:T.font,
+                transition:"background .15s",
+              }}
+              onPointerEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.16)"}
+              onPointerLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.08)"}
+              >💬 Message</button>
+              <button onClick={onQuit} style={{
+                flex:1,padding:"11px",borderRadius:14,border:"1.5px solid rgba(255,255,255,.2)",
+                background:"rgba(255,255,255,.08)",color:"rgba(255,255,255,.85)",
+                fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:T.font,
+                transition:"background .15s",
+              }}
+              onPointerEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.16)"}
+              onPointerLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.08)"}
+              >🚪 Quit</button>
+            </div>
+            <button onClick={()=>{SFX.deal();onPlayAgain();}} style={{
+              width:"100%",padding:"14px",borderRadius:14,border:"none",
+              background:"linear-gradient(135deg,#F59E0B,#F97316)",
+              color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",
+              fontFamily:T.font,letterSpacing:.3,
+              boxShadow:"0 8px 28px rgba(245,158,11,.55)",
+              animation:"btnPulse 2s ease-in-out infinite",
+            }}>🎮 Play Again</button>
+          </div>
+        )}
+      </div>
+
+      {/* Tap anywhere note */}
+      {phase>=3&&(
+        <div style={{
+          position:"absolute",bottom:24,fontSize:10,
+          color:"rgba(255,255,255,.2)",letterSpacing:2,textTransform:"uppercase",
+          animation:"msgFadeIn 1s .5s ease both",zIndex:10,
+        }}>Tap Play Again to continue</div>
+      )}
     </div>
   );
 }
