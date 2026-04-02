@@ -1362,7 +1362,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const merged={...gsRef.current,...update};
     gsRef.current=merged;
     setGs(merged);
-    if(clWon)SFX.win();else SFX.fail(); — no waiting
+    if(clWon)SFX.win();else SFX.fail();
     writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
     dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
