@@ -261,8 +261,7 @@ const BASE_CSS=`
   .fade-up{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both;}
   .pop{animation:pop .3s cubic-bezier(.22,1,.36,1) both;}
   @keyframes turnFlash{0%{opacity:0;transform:translate(-50%,-50%) scale(.7);}30%{opacity:1;transform:translate(-50%,-50%) scale(1.06);}70%{opacity:1;transform:translate(-50%,-50%) scale(1);}100%{opacity:0;transform:translate(-50%,-50%) scale(.95);}}
-  .bubble-in{animation:bubbleIn .28s cubic-bezier(.22,1,.36,1) both;}
-  .bubble-out{animation:bubbleOut .22s ease-in both;}
+  /* bubble animations now handled inline via bubbleBounce/bubbleFade */
   @keyframes confettiFall{0%{transform:translateY(-20px) rotate(0deg) scale(1);opacity:1;}100%{transform:translateY(110vh) rotate(720deg) scale(.5);opacity:0;}}
   @keyframes trophyBounce{0%{transform:scale(0) rotate(-20deg);}50%{transform:scale(1.2) rotate(8deg);}70%{transform:scale(.92) rotate(-4deg);}100%{transform:scale(1) rotate(0deg);}}
   @keyframes winnerNameSlide{0%{opacity:0;transform:translateY(30px) scale(.8);}60%{transform:translateY(-6px) scale(1.04);}100%{opacity:1;transform:translateY(0) scale(1);}}
@@ -271,6 +270,12 @@ const BASE_CSS=`
   @keyframes msgFadeIn{0%{opacity:0;transform:translateY(12px);}100%{opacity:1;transform:none;}}
   @keyframes shimmerText{0%{background-position:200% center;}100%{background-position:-200% center;}}
   @keyframes ringPulse{0%{transform:scale(.95);opacity:.6;}50%{transform:scale(1.05);opacity:1;}100%{transform:scale(.95);opacity:.6;}}
+  @keyframes emojiPop{0%{transform:scale(0) rotate(-30deg);opacity:0;}60%{transform:scale(1.3) rotate(6deg);}100%{transform:scale(1) rotate(0deg);opacity:1;}}
+  @keyframes chipSlide{0%{opacity:0;transform:translateX(20px);}100%{opacity:1;transform:none;}}
+  @keyframes trayUp{0%{opacity:0;transform:translateY(100%);}100%{opacity:1;transform:translateY(0);}}
+  @keyframes inputGlow{0%,100%{box-shadow:0 0 0 0 rgba(37,99,235,0);}50%{box-shadow:0 0 0 3px rgba(37,99,235,.35);}}
+  @keyframes bubbleBounce{0%{transform:scale(0) translateY(10px);}55%{transform:scale(1.15) translateY(-4px);}80%{transform:scale(.95) translateY(1px);}100%{transform:scale(1) translateY(0);}}
+  @keyframes bubbleFade{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(.7) translateY(-12px);}}
 `;
 
 // ── Game constants ────────────────────────────────────────────────────────────
@@ -427,108 +432,307 @@ const FanCards=memo(({count=5})=>{
 // ── Chat system ───────────────────────────────────────────────────────────────
 // ── Carrom Pool-style Chat ────────────────────────────────────────────────────
 // Two rows: top = emojis (instant tap), bottom = phrases (scroll)
-const EMOJIS=["👋","😂","🔥","😱","😤","🙏","👏","😎","🤣","💪","😬","🏆"];
-const PHRASES=[
-  {s:"GG!",l:"GG!"},
-  {s:"Nice 👌",l:"Nice one! 👌"},
-  {s:"Lucky 😏",l:"Lucky! 😏"},
-  {s:"Easy 😎",l:"Too easy 😎"},
-  {s:"Oops 😅",l:"Oops! 😅"},
-  {s:"Hurry ⏰",l:"Hurry up! ⏰"},
-  {s:"Noice 🎉",l:"Noice! 🎉"},
-  {s:"Unlucky 😢",l:"Unlucky! 😢"},
+// ── Chat Data ─────────────────────────────────────────────────────────────────
+const CHAT_EMOJIS=[
+  ["👋","😂","🔥","😱","😤","🙏"],
+  ["👏","😎","🤣","💪","😬","🏆"],
+  ["❤️","💀","🎯","⚡","🎉","😅"],
+];
+const CHAT_PHRASES=[
+  {s:"GG! 🏆",   l:"GG! Well played 🏆"},
+  {s:"Nice 👌",  l:"Nice one! 👌"},
+  {s:"Lucky 😏", l:"Lucky! 😏"},
+  {s:"Ez 😎",    l:"Too easy 😎"},
+  {s:"Oops 😅",  l:"Oops! 😅"},
+  {s:"Hurry ⏰", l:"Hurry up! ⏰"},
+  {s:"Noice 🎉", l:"Noice! 🎉"},
+  {s:"Rekt 💀",  l:"Get rekt 💀"},
+  {s:"Pog 🔥",   l:"That was POG 🔥"},
+  {s:"Help 😭",  l:"Someone help me 😭"},
 ];
 
-// Floating speech bubble — Carrom Pool style
-const ChatBubble=memo(({msg,isMe,dying})=>{
+// ── Styled Chat Bubble ────────────────────────────────────────────────────────
+const ChatBubble=memo(({msg,isMe,dying,name})=>{
   if(!msg)return null;
-  const big=msg.length<=2;// emoji-only → larger
+  const isEmoji=/^\p{Emoji}+$/u.test(msg.trim())&&msg.trim().length<=4;
   return(
-    <div className={dying?"bubble-out":"bubble-in"} style={{
+    <div style={{
       position:"absolute",
-      bottom:"calc(100% + 6px)",
-      ...(isMe?{right:4}:{left:4}),
-      background:isMe?"linear-gradient(135deg,#2563EB,#1d4ed8)":"rgba(255,255,255,.98)",
-      color:isMe?"#fff":"#111218",
-      borderRadius:isMe?"18px 18px 3px 18px":"18px 18px 18px 3px",
-      padding:big?"4px 8px":"6px 12px",
-      fontSize:big?28:12,
-      fontWeight:big?400:700,
-      maxWidth:150,lineHeight:big?1:1.35,
-      whiteSpace:"nowrap",
-      boxShadow:isMe
-        ?"0 4px 20px rgba(37,99,235,.45),0 1px 4px rgba(0,0,0,.2)"
-        :"0 4px 16px rgba(0,0,0,.18),0 1px 3px rgba(0,0,0,.1)",
-      border:isMe?"none":"1.5px solid rgba(255,255,255,.95)",
+      bottom:"calc(100% + 8px)",
+      ...(isMe?{right:0}:{left:0}),
       zIndex:30,pointerEvents:"none",
-      letterSpacing:isMe&&!big?".3px":0,
-    }}>{msg}</div>
+      animation:dying?"bubbleFade .25s ease-in both":"bubbleBounce .35s cubic-bezier(.22,1,.36,1) both",
+    }}>
+      {/* Name tag above bubble */}
+      {!isMe&&name&&(
+        <div style={{
+          fontSize:9,fontWeight:800,color:"rgba(255,255,255,.6)",
+          marginBottom:3,paddingLeft:4,letterSpacing:.5,
+          textShadow:"0 1px 4px rgba(0,0,0,.5)",
+        }}>{name}</div>
+      )}
+      <div style={{
+        background:isMe
+          ?"linear-gradient(135deg,#2563EB 0%,#7c3aed 100%)"
+          :"rgba(255,255,255,.96)",
+        color:isMe?"#fff":"#111218",
+        borderRadius:isMe?"18px 18px 4px 18px":"18px 18px 18px 4px",
+        padding:isEmoji?"6px 10px":"8px 13px",
+        fontSize:isEmoji?30:12,
+        fontWeight:isEmoji?400:700,
+        maxWidth:170,
+        lineHeight:isEmoji?1:1.4,
+        whiteSpace:isEmoji?"nowrap":"pre-wrap",
+        wordBreak:"break-word",
+        boxShadow:isMe
+          ?"0 6px 24px rgba(37,99,235,.5),0 2px 6px rgba(0,0,0,.25),inset 0 1px 0 rgba(255,255,255,.2)"
+          :"0 4px 16px rgba(0,0,0,.2),0 1px 4px rgba(0,0,0,.1),inset 0 1px 0 rgba(255,255,255,.9)",
+        border:isMe?"none":"1.5px solid rgba(255,255,255,.9)",
+        backdropFilter:isMe?"none":"blur(8px)",
+        letterSpacing:isMe&&!isEmoji?".2px":0,
+        position:"relative",
+        overflow:"hidden",
+      }}>
+        {/* Shimmer overlay for my messages */}
+        {isMe&&(
+          <div style={{
+            position:"absolute",inset:0,
+            background:"linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent)",
+            backgroundSize:"200% 100%",
+            animation:"shimmerText 2s linear infinite",
+            pointerEvents:"none",
+          }}/>
+        )}
+        {msg}
+      </div>
+    </div>
   );
 });
 
-// Carrom Pool chat tray — pops up from bottom-right, two rows, instant tap
-function CarromChat({onSend,onClose}){
+// ── Chat FAB ──────────────────────────────────────────────────────────────────
+function ChatFAB({onClick,hasNew}){
   return(
-    <div onClick={onClose} style={{
-      position:"fixed",inset:0,zIndex:140,
-      // No dim — fully transparent overlay so game stays visible
-    }}>
+    <button onClick={onClick} style={{
+      position:"fixed",bottom:100,right:12,
+      width:46,height:46,borderRadius:"50%",border:"none",
+      background:hasNew
+        ?"linear-gradient(135deg,#10B981,#059669)"
+        :"linear-gradient(135deg,#2563EB,#7c3aed)",
+      color:"#fff",fontSize:21,cursor:"pointer",
+      boxShadow:hasNew
+        ?"0 4px 20px rgba(16,185,129,.6)"
+        :"0 4px 20px rgba(37,99,235,.55),0 0 0 0 rgba(37,99,235,.3)",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      zIndex:130,
+      WebkitTapHighlightColor:"transparent",
+      animation:hasNew?"btnPulse 1.5s ease-in-out infinite":"none",
+      transition:"background .2s,box-shadow .2s",
+    }}
+    onPointerDown={e=>e.currentTarget.style.transform="scale(.88)"}
+    onPointerUp={e=>e.currentTarget.style.transform=""}
+    onPointerLeave={e=>e.currentTarget.style.transform=""}
+    >💬</button>
+  );
+}
+
+// ── Upgraded CarromChat tray ───────────────────────────────────────────────────
+function CarromChat({onSend,onClose}){
+  const [tab,setTab]=useState("emoji");// "emoji"|"phrase"|"custom"
+  const [customText,setCustomText]=useState("");
+  const [lastSent,setLastSent]=useState(null);
+  const inputRef=useRef(null);
+
+  useEffect(()=>{if(tab==="custom"&&inputRef.current)inputRef.current.focus();},[tab]);
+
+  function send(text){
+    if(!text.trim())return;
+    setLastSent(text);
+    onSend(text);
+    SFX.chat();
+    onClose();
+  }
+
+  function sendCustom(){
+    if(!customText.trim())return;
+    send(customText.trim());
+    setCustomText("");
+  }
+
+  const TABS=[{id:"emoji",icon:"😊",label:"Emoji"},{id:"phrase",icon:"💬",label:"Phrases"},{id:"custom",icon:"✏️",label:"Custom"}];
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:140}}>
       <div onClick={e=>e.stopPropagation()} style={{
         position:"fixed",bottom:0,left:0,right:0,
         maxWidth:480,margin:"0 auto",
-        background:"rgba(15,15,20,.92)",
-        backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
-        borderRadius:"20px 20px 0 0",
-        borderTop:"1px solid rgba(255,255,255,.12)",
-        padding:"10px 10px 20px",
-        animation:"chatSlide .15s cubic-bezier(.22,1,.36,1) both",
-        boxShadow:"0 -12px 40px rgba(0,0,0,.5)",
+        background:"linear-gradient(180deg,rgba(10,10,20,.96) 0%,rgba(5,5,15,.99) 100%)",
+        backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
+        borderRadius:"24px 24px 0 0",
+        borderTop:"1.5px solid rgba(255,255,255,.1)",
+        animation:"trayUp .2s cubic-bezier(.22,1,.36,1) both",
+        boxShadow:"0 -16px 60px rgba(0,0,0,.7)",
+        overflow:"hidden",
       }}>
+        {/* Drag handle */}
+        <div style={{display:"flex",justifyContent:"center",padding:"10px 0 0"}}>
+          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,.2)"}}/>
+        </div>
+
         {/* Header */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,padding:"0 4px"}}>
-          <span style={{fontSize:11,fontWeight:700,color:"rgba(255,255,255,.5)",letterSpacing:1,textTransform:"uppercase"}}>Quick Chat</span>
-          <button onClick={onClose} style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:20,width:24,height:24,cursor:"pointer",color:"rgba(255,255,255,.6)",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-        </div>
-        {/* Emoji row — large, instant tap */}
-        <div style={{display:"flex",gap:4,marginBottom:8,justifyContent:"space-around"}}>
-          {EMOJIS.map(e=>(
-            <button key={e}
-              onPointerDown={ev=>{ev.currentTarget.style.transform="scale(1.35)";ev.currentTarget.style.filter="brightness(1.3)";}}
-              onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.filter="";onSend(e);onClose();}}
-              onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.filter="";}}
-              style={{
-                fontSize:24,background:"none",border:"none",cursor:"pointer",
-                padding:"4px",borderRadius:10,
-                transition:"transform .08s",
-                WebkitTapHighlightColor:"transparent",userSelect:"none",
-                lineHeight:1,
-              }}>{e}</button>
-          ))}
-        </div>
-        {/* Phrase row — scrollable chips */}
         <div style={{
-          display:"flex",gap:6,overflowX:"auto",
-          scrollbarWidth:"none",WebkitOverflowScrolling:"touch",
-          padding:"2px 0",
+          display:"flex",justifyContent:"space-between",alignItems:"center",
+          padding:"8px 16px 0",
         }}>
-          {PHRASES.map(({s,l})=>(
-            <button key={s}
-              onPointerDown={ev=>{ev.currentTarget.style.background="rgba(37,99,235,.9)";ev.currentTarget.style.transform="scale(.95)";}}
-              onPointerUp={ev=>{ev.currentTarget.style.background="rgba(255,255,255,.12)";ev.currentTarget.style.transform="";onSend(l);onClose();}}
-              onPointerLeave={ev=>{ev.currentTarget.style.background="rgba(255,255,255,.12)";ev.currentTarget.style.transform="";}}
-              style={{
-                flexShrink:0,
-                padding:"6px 13px",borderRadius:20,
-                background:"rgba(255,255,255,.12)",
-                border:"1px solid rgba(255,255,255,.15)",
-                color:"rgba(255,255,255,.9)",
-                fontSize:11,fontWeight:700,
-                cursor:"pointer",whiteSpace:"nowrap",
-                fontFamily:T.font,
-                transition:"background .07s,transform .07s",
-                WebkitTapHighlightColor:"transparent",userSelect:"none",
-              }}>{s}</button>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{
+              width:8,height:8,borderRadius:"50%",
+              background:"linear-gradient(135deg,#10B981,#059669)",
+              boxShadow:"0 0 6px rgba(16,185,129,.6)",
+              animation:"ringPulse 1.5s ease-in-out infinite",
+            }}/>
+            <span style={{fontSize:12,fontWeight:800,color:"rgba(255,255,255,.9)",letterSpacing:.5}}>
+              In-Game Chat
+            </span>
+          </div>
+          <button onClick={onClose} style={{
+            background:"rgba(255,255,255,.1)",border:"none",
+            borderRadius:"50%",width:28,height:28,cursor:"pointer",
+            color:"rgba(255,255,255,.7)",fontSize:14,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"background .12s",
+          }}
+          onPointerEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.2)"}
+          onPointerLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}
+          >✕</button>
+        </div>
+
+        {/* Tab bar */}
+        <div style={{display:"flex",gap:6,padding:"10px 14px 0"}}>
+          {TABS.map(({id,icon,label})=>(
+            <button key={id} onClick={()=>setTab(id)} style={{
+              flex:1,padding:"7px 4px",borderRadius:12,border:"none",cursor:"pointer",
+              background:tab===id
+                ?"linear-gradient(135deg,#2563EB,#7c3aed)"
+                :"rgba(255,255,255,.07)",
+              color:tab===id?"#fff":"rgba(255,255,255,.45)",
+              fontSize:11,fontWeight:700,fontFamily:T.font,
+              boxShadow:tab===id?"0 4px 14px rgba(37,99,235,.45)":"none",
+              transition:"all .15s",
+              display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+            }}>
+              <span style={{fontSize:16}}>{icon}</span>
+              <span style={{letterSpacing:.3}}>{label}</span>
+            </button>
           ))}
+        </div>
+
+        {/* Tab content */}
+        <div style={{padding:"12px 12px 20px",minHeight:120}}>
+
+          {/* EMOJI TAB */}
+          {tab==="emoji"&&(
+            <div>
+              {CHAT_EMOJIS.map((row,ri)=>(
+                <div key={ri} style={{
+                  display:"flex",justifyContent:"space-around",marginBottom:ri<CHAT_EMOJIS.length-1?6:0,
+                }}>
+                  {row.map((e,ei)=>(
+                    <button key={e}
+                      onPointerDown={ev=>{ev.currentTarget.style.transform="scale(.8)";ev.currentTarget.style.background="rgba(37,99,235,.3)";}}
+                      onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.06)";send(e);}}
+                      onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.06)";}}
+                      style={{
+                        fontSize:28,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",
+                        borderRadius:14,width:48,height:48,cursor:"pointer",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        transition:"transform .07s,background .07s",
+                        WebkitTapHighlightColor:"transparent",userSelect:"none",
+                        animation:`emojiPop .3s ${(ri*6+ei)*0.03}s cubic-bezier(.22,1,.36,1) both`,
+                      }}>{e}</button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* PHRASE TAB */}
+          {tab==="phrase"&&(
+            <div style={{
+              display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,
+            }}>
+              {CHAT_PHRASES.map(({s,l},i)=>(
+                <button key={s}
+                  onPointerDown={ev=>{ev.currentTarget.style.transform="scale(.94)";ev.currentTarget.style.background="rgba(37,99,235,.5)";}}
+                  onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.08)";send(l);}}
+                  onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.08)";}}
+                  style={{
+                    padding:"9px 10px",borderRadius:14,
+                    background:"rgba(255,255,255,.08)",
+                    border:"1px solid rgba(255,255,255,.1)",
+                    color:"rgba(255,255,255,.88)",
+                    fontSize:11,fontWeight:700,cursor:"pointer",
+                    fontFamily:T.font,textAlign:"left",
+                    transition:"transform .07s,background .07s",
+                    WebkitTapHighlightColor:"transparent",
+                    animation:`chipSlide .25s ${i*0.04}s ease both`,
+                    letterSpacing:.2,
+                  }}>{s}</button>
+              ))}
+            </div>
+          )}
+
+          {/* CUSTOM TAB */}
+          {tab==="custom"&&(
+            <div style={{animation:"chipSlide .2s ease both"}}>
+              <div style={{
+                fontSize:10,color:"rgba(255,255,255,.35)",
+                letterSpacing:1,textTransform:"uppercase",marginBottom:8,
+              }}>Type your message</div>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                <input
+                  ref={inputRef}
+                  value={customText}
+                  onChange={e=>setCustomText(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&sendCustom()}
+                  maxLength={50}
+                  placeholder="Say something..."
+                  style={{
+                    flex:1,padding:"11px 14px",borderRadius:14,
+                    background:"rgba(255,255,255,.08)",
+                    border:"1.5px solid rgba(37,99,235,.4)",
+                    color:"#fff",fontSize:13,fontFamily:T.font,
+                    outline:"none",
+                    animation:"inputGlow 2s ease-in-out infinite",
+                    caretColor:"#2563EB",
+                  }}
+                />
+                <button onClick={sendCustom} disabled={!customText.trim()} style={{
+                  padding:"11px 16px",borderRadius:14,border:"none",
+                  background:customText.trim()
+                    ?"linear-gradient(135deg,#2563EB,#7c3aed)"
+                    :"rgba(255,255,255,.08)",
+                  color:customText.trim()?"#fff":"rgba(255,255,255,.3)",
+                  fontWeight:800,fontSize:13,cursor:customText.trim()?"pointer":"default",
+                  fontFamily:T.font,transition:"all .15s",
+                  boxShadow:customText.trim()?"0 4px 14px rgba(37,99,235,.4)":"none",
+                }}>Send</button>
+              </div>
+              {/* Quick custom suggestions */}
+              <div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginBottom:6,letterSpacing:.5}}>Quick picks:</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {["Good game!","Watch out!","My turn 😤","So close!","Let's go! 🔥","Ez clap 👏"].map(q=>(
+                  <button key={q} onClick={()=>send(q)} style={{
+                    padding:"5px 10px",borderRadius:20,
+                    background:"rgba(255,255,255,.06)",
+                    border:"1px solid rgba(255,255,255,.1)",
+                    color:"rgba(255,255,255,.6)",fontSize:10,fontWeight:600,
+                    cursor:"pointer",fontFamily:T.font,
+                    transition:"all .1s",WebkitTapHighlightColor:"transparent",
+                  }}>{q}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -536,25 +740,6 @@ function CarromChat({onSend,onClose}){
 }
 
 // Tiny floating 💬 FAB — always visible, one tap to open
-function ChatFAB({onClick,hasNew}){
-  return(
-    <button onClick={onClick} style={{
-      position:"fixed",bottom:100,right:12,
-      width:42,height:42,borderRadius:"50%",border:"none",
-      background:hasNew?"linear-gradient(135deg,#10B981,#059669)":"linear-gradient(135deg,#2563EB,#1d4ed8)",
-      color:"#fff",fontSize:20,cursor:"pointer",
-      boxShadow:hasNew?"0 4px 20px rgba(16,185,129,.6)":"0 4px 16px rgba(37,99,235,.5)",
-      display:"flex",alignItems:"center",justifyContent:"center",
-      zIndex:130,transition:"transform .1s,box-shadow .1s",
-      WebkitTapHighlightColor:"transparent",
-    }}
-    onPointerDown={e=>{e.currentTarget.style.transform="scale(.88)";}}
-    onPointerUp={e=>{e.currentTarget.style.transform="";}}
-    onPointerLeave={e=>{e.currentTarget.style.transform="";}}
-    >💬</button>
-  );
-}
-
 // ── Modals ────────────────────────────────────────────────────────────────────
 function RulesModal({onClose,limit,penalty}){
   const rules=[["🎯 Goal",`Lowest hand total when SHOW is called. Reach ${limit} pts → eliminated. Last player wins.`],["🃏 Points","A=1 · 2–9=face value · 10/J/Q/K=10"],["🌟 Wild","One rank revealed each round — all those cards = 0 pts. Peeks sideways from the table bottom."],["↕ Turn","Tap Stock or Discard (green glow = source). Tap hand card (yellow glow = drop). Tap SWAP."],["♊ Multi-Drop","Drop multiple cards of the same rank in one move."],["📢 SHOW",`Correct → 0 pts for you; others score their totals. Wrong → +${penalty||50} pts penalty for you.`],["⏱ Timer","30s per turn. Extend by 10s or skip."]];
@@ -1665,7 +1850,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
           const h=hands?.[name]||[],isCur=currentPlayer===name,bubble=chatMsgs[name];
           return(
             <div key={name} style={{position:"relative",background:isCur?"rgba(37,99,235,.08)":T.surface,backdropFilter:"blur(12px)",border:isCur?`1.5px solid ${T.accent}`:"1.5px solid rgba(255,255,255,.9)",borderRadius:12,padding:"8px 10px",textAlign:"center",minWidth:80,boxShadow:T.shadow}}>
-              {bubble&&<ChatBubble msg={bubble.text} isMe={false} dying={bubble.dying}/>}
+              {bubble&&<ChatBubble msg={bubble.text} isMe={false} dying={bubble.dying} name={name}/>}
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,marginBottom:6}}>
                 <span style={{fontSize:12}}>👤</span>
                 <span style={{fontWeight:700,fontSize:11,color:isCur?T.accent:T.ink,maxWidth:58,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
