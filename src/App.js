@@ -276,6 +276,10 @@ const BASE_CSS=`
   @keyframes loserCard{0%{opacity:0;transform:scale(.7) translateY(40px);}60%{transform:scale(1.03) translateY(-6px);}100%{opacity:1;transform:scale(1) translateY(0);}}
   @keyframes glitchText{0%,100%{clip-path:inset(0 0 0 0);}20%{clip-path:inset(10% 0 60% 0);transform:translateX(-4px);}40%{clip-path:inset(40% 0 20% 0);transform:translateX(4px);}60%{clip-path:inset(70% 0 5% 0);transform:translateX(-2px);}80%{clip-path:inset(20% 0 70% 0);transform:translateX(2px);}}
   @keyframes cryFloat{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-8px) scale(1.1);}}
+  @keyframes slideInLeft{from{transform:translateX(-100%);opacity:0;}to{transform:translateX(0);opacity:1;}}
+  @keyframes slideOutLeft{from{transform:translateX(0);opacity:1;}to{transform:translateX(-100%);opacity:0;}}
+  @keyframes msgAppear{0%{opacity:0;transform:translateX(-16px) scale(.92);}100%{opacity:1;transform:none;}}
+  @keyframes tabPulse{0%,100%{transform:translateX(0) scaleY(1);}50%{transform:translateX(2px) scaleY(1.04);}}
   @keyframes emojiPop{0%{transform:scale(0) rotate(-30deg);opacity:0;}60%{transform:scale(1.3) rotate(6deg);}100%{transform:scale(1) rotate(0deg);opacity:1;}}
   @keyframes chipSlide{0%{opacity:0;transform:translateX(20px);}100%{opacity:1;transform:none;}}
   @keyframes trayUp{0%{opacity:0;transform:translateY(100%);}100%{opacity:1;transform:translateY(0);}}
@@ -516,144 +520,187 @@ const ChatBubble=memo(({msg,isMe,dying,name})=>{
 });
 
 // ── Chat FAB ──────────────────────────────────────────────────────────────────
-function ChatFAB({onClick,hasNew}){
-  return(
-    <button onClick={onClick} style={{
-      position:"fixed",top:68,left:12,
-      width:40,height:40,borderRadius:"50%",border:"none",
-      background:hasNew
-        ?"linear-gradient(135deg,#10B981,#059669)"
-        :"linear-gradient(135deg,#2563EB,#7c3aed)",
-      color:"#fff",fontSize:21,cursor:"pointer",
-      boxShadow:hasNew
-        ?"0 4px 20px rgba(16,185,129,.6)"
-        :"0 4px 20px rgba(37,99,235,.55),0 0 0 0 rgba(37,99,235,.3)",
-      display:"flex",alignItems:"center",justifyContent:"center",
-      zIndex:130,
-      WebkitTapHighlightColor:"transparent",
-      animation:hasNew?"btnPulse 1.5s ease-in-out infinite":"none",
-      transition:"background .2s,box-shadow .2s",
-    }}
-    onPointerDown={e=>e.currentTarget.style.transform="scale(.88)"}
-    onPointerUp={e=>e.currentTarget.style.transform=""}
-    onPointerLeave={e=>e.currentTarget.style.transform=""}
-    >💬</button>
-  );
-}
-
-// ── Upgraded CarromChat tray ───────────────────────────────────────────────────
-function CarromChat({onSend,onClose}){
-  const [tab,setTab]=useState("emoji");// "emoji"|"phrase"|"custom"
+// ── Carrom Pool Left Slide Chat Panel ────────────────────────────────────────
+function ChatSidePanel({onSend,chatLog,myName,open,onToggle}){
+  const [tab,setTab]=useState("emoji");
   const [customText,setCustomText]=useState("");
-  const [lastSent,setLastSent]=useState(null);
   const inputRef=useRef(null);
+  const logRef=useRef(null);
 
-  useEffect(()=>{if(tab==="custom"&&inputRef.current)inputRef.current.focus();},[tab]);
+  useEffect(()=>{
+    if(tab==="custom"&&open&&inputRef.current)
+      setTimeout(()=>inputRef.current?.focus(),100);
+  },[tab,open]);
+
+  // Auto-scroll message log to bottom
+  useEffect(()=>{
+    if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;
+  },[chatLog,open]);
 
   function send(text){
     if(!text.trim())return;
-    setLastSent(text);
     onSend(text);
     SFX.chat();
-    onClose();
-  }
-
-  function sendCustom(){
-    if(!customText.trim())return;
-    send(customText.trim());
     setCustomText("");
   }
 
-  const TABS=[{id:"emoji",icon:"😊",label:"Emoji"},{id:"phrase",icon:"💬",label:"Phrases"},{id:"custom",icon:"✏️",label:"Custom"}];
+  const TABS=[
+    {id:"emoji",icon:"😊"},
+    {id:"phrase",icon:"💬"},
+    {id:"custom",icon:"✏️"},
+  ];
 
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:140}}>
-      <div onClick={e=>e.stopPropagation()} style={{
-        position:"fixed",bottom:0,left:0,right:0,
-        maxWidth:480,margin:"0 auto",
-        background:"linear-gradient(180deg,rgba(10,10,20,.96) 0%,rgba(5,5,15,.99) 100%)",
-        backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
-        borderRadius:"24px 24px 0 0",
-        borderTop:"1.5px solid rgba(255,255,255,.1)",
-        animation:"trayUp .2s cubic-bezier(.22,1,.36,1) both",
-        boxShadow:"0 -16px 60px rgba(0,0,0,.7)",
+    <>
+      {/* Dim backdrop — only when open, tap to close */}
+      {open&&(
+        <div onClick={onToggle} style={{
+          position:"fixed",inset:0,zIndex:138,
+          background:"rgba(0,0,0,.35)",
+          backdropFilter:"blur(2px)",
+        }}/>
+      )}
+
+      {/* Left slide panel */}
+      <div style={{
+        position:"fixed",top:0,left:0,bottom:0,
+        width:240,zIndex:139,
+        background:"linear-gradient(180deg,rgba(8,8,20,.97),rgba(4,4,14,.99))",
+        backdropFilter:"blur(28px)",WebkitBackdropFilter:"blur(28px)",
+        borderRight:"1.5px solid rgba(255,255,255,.08)",
+        boxShadow:"8px 0 40px rgba(0,0,0,.7)",
+        display:"flex",flexDirection:"column",
+        transform:open?"translateX(0)":"translateX(-100%)",
+        transition:"transform .22s cubic-bezier(.22,1,.36,1)",
         overflow:"hidden",
       }}>
-        {/* Drag handle */}
-        <div style={{display:"flex",justifyContent:"center",padding:"10px 0 0"}}>
-          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,.2)"}}/>
-        </div>
 
-        {/* Header */}
+        {/* Panel header */}
         <div style={{
-          display:"flex",justifyContent:"space-between",alignItems:"center",
-          padding:"8px 16px 0",
+          padding:"52px 14px 10px",
+          borderBottom:"1px solid rgba(255,255,255,.07)",
+          background:"linear-gradient(180deg,rgba(37,99,235,.18),transparent)",
         }}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{
-              width:8,height:8,borderRadius:"50%",
-              background:"linear-gradient(135deg,#10B981,#059669)",
-              boxShadow:"0 0 6px rgba(16,185,129,.6)",
-              animation:"ringPulse 1.5s ease-in-out infinite",
-            }}/>
-            <span style={{fontSize:12,fontWeight:800,color:"rgba(255,255,255,.9)",letterSpacing:.5}}>
-              In-Game Chat
-            </span>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{
+                width:8,height:8,borderRadius:"50%",flexShrink:0,
+                background:"#10B981",
+                boxShadow:"0 0 8px rgba(16,185,129,.8)",
+                animation:"ringPulse 1.5s infinite",
+              }}/>
+              <span style={{fontSize:13,fontWeight:900,color:"#fff",letterSpacing:.3}}>Chat</span>
+            </div>
+            <button onClick={onToggle} style={{
+              background:"rgba(255,255,255,.08)",border:"none",borderRadius:"50%",
+              width:26,height:26,cursor:"pointer",color:"rgba(255,255,255,.6)",
+              fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",
+            }}>✕</button>
           </div>
-          <button onClick={onClose} style={{
-            background:"rgba(255,255,255,.1)",border:"none",
-            borderRadius:"50%",width:28,height:28,cursor:"pointer",
-            color:"rgba(255,255,255,.7)",fontSize:14,
-            display:"flex",alignItems:"center",justifyContent:"center",
-            transition:"background .12s",
-          }}
-          onPointerEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.2)"}
-          onPointerLeave={e=>e.currentTarget.style.background="rgba(255,255,255,.1)"}
-          >✕</button>
         </div>
 
-        {/* Tab bar */}
-        <div style={{display:"flex",gap:6,padding:"10px 14px 0"}}>
-          {TABS.map(({id,icon,label})=>(
-            <button key={id} onClick={()=>setTab(id)} style={{
-              flex:1,padding:"7px 4px",borderRadius:12,border:"none",cursor:"pointer",
-              background:tab===id
-                ?"linear-gradient(135deg,#2563EB,#7c3aed)"
-                :"rgba(255,255,255,.07)",
-              color:tab===id?"#fff":"rgba(255,255,255,.45)",
-              fontSize:11,fontWeight:700,fontFamily:T.font,
-              boxShadow:tab===id?"0 4px 14px rgba(37,99,235,.45)":"none",
-              transition:"all .15s",
-              display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+        {/* Live message log */}
+        <div ref={logRef} style={{
+          flex:1,overflowY:"auto",padding:"10px 10px 6px",
+          display:"flex",flexDirection:"column",gap:7,
+          scrollbarWidth:"thin",scrollbarColor:"rgba(255,255,255,.1) transparent",
+        }}>
+          {(!chatLog||chatLog.length===0)&&(
+            <div style={{
+              textAlign:"center",marginTop:20,
+              fontSize:11,color:"rgba(255,255,255,.2)",lineHeight:1.7,
             }}>
-              <span style={{fontSize:16}}>{icon}</span>
-              <span style={{letterSpacing:.3}}>{label}</span>
-            </button>
+              <div style={{fontSize:28,marginBottom:6}}>💬</div>
+              No messages yet<br/>Say something!
+            </div>
+          )}
+          {(chatLog||[]).map((m,i)=>{
+            const isMe=m.name===myName;
+            const isEmoji=/^\p{Emoji}+$/u.test((m.text||"").trim())&&m.text.trim().length<=4;
+            return(
+              <div key={i} style={{
+                display:"flex",
+                flexDirection:isMe?"row-reverse":"row",
+                alignItems:"flex-end",gap:6,
+                animation:`msgAppear .25s ${Math.min(i*0.05,.3)}s ease both`,
+              }}>
+                {/* Avatar dot */}
+                <div style={{
+                  width:22,height:22,borderRadius:"50%",flexShrink:0,
+                  background:isMe
+                    ?"linear-gradient(135deg,#2563EB,#7c3aed)"
+                    :"linear-gradient(135deg,#374151,#1f2937)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:10,fontWeight:800,color:"#fff",
+                  boxShadow:isMe?"0 2px 8px rgba(37,99,235,.4)":"none",
+                }}>{(m.name||"?")[0].toUpperCase()}</div>
+                <div style={{maxWidth:148}}>
+                  {!isMe&&(
+                    <div style={{
+                      fontSize:9,fontWeight:700,
+                      color:"rgba(255,255,255,.35)",
+                      marginBottom:2,paddingLeft:4,letterSpacing:.3,
+                    }}>{m.name}</div>
+                  )}
+                  <div style={{
+                    background:isMe
+                      ?"linear-gradient(135deg,#2563EB,#7c3aed)"
+                      :"rgba(255,255,255,.09)",
+                    border:isMe?"none":"1px solid rgba(255,255,255,.1)",
+                    borderRadius:isMe?"14px 14px 3px 14px":"14px 14px 14px 3px",
+                    padding:isEmoji?"4px 8px":"7px 10px",
+                    fontSize:isEmoji?22:11,
+                    fontWeight:700,
+                    color:isMe?"#fff":"rgba(255,255,255,.88)",
+                    lineHeight:isEmoji?1:1.4,
+                    wordBreak:"break-word",
+                    boxShadow:isMe?"0 3px 12px rgba(37,99,235,.35)":"none",
+                  }}>{m.text}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Tab switcher */}
+        <div style={{
+          display:"flex",
+          borderTop:"1px solid rgba(255,255,255,.07)",
+          borderBottom:"1px solid rgba(255,255,255,.07)",
+        }}>
+          {TABS.map(({id,icon})=>(
+            <button key={id} onClick={()=>setTab(id)} style={{
+              flex:1,padding:"8px 0",border:"none",cursor:"pointer",
+              background:tab===id?"rgba(37,99,235,.25)":"transparent",
+              color:tab===id?"#fff":"rgba(255,255,255,.35)",
+              fontSize:18,
+              borderBottom:tab===id?"2px solid #2563EB":"2px solid transparent",
+              transition:"all .12s",
+            }}>{icon}</button>
           ))}
         </div>
 
-        {/* Tab content */}
-        <div style={{padding:"12px 12px 20px",minHeight:120}}>
+        {/* Send area */}
+        <div style={{padding:"10px 10px 16px",flexShrink:0}}>
 
-          {/* EMOJI TAB */}
+          {/* EMOJI */}
           {tab==="emoji"&&(
             <div>
               {CHAT_EMOJIS.map((row,ri)=>(
-                <div key={ri} style={{
-                  display:"flex",justifyContent:"space-around",marginBottom:ri<CHAT_EMOJIS.length-1?6:0,
-                }}>
+                <div key={ri} style={{display:"flex",justifyContent:"space-around",marginBottom:ri<2?6:0}}>
                   {row.map((e,ei)=>(
                     <button key={e}
-                      onPointerDown={ev=>{ev.currentTarget.style.transform="scale(.8)";ev.currentTarget.style.background="rgba(37,99,235,.3)";}}
-                      onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.06)";send(e);}}
-                      onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.06)";}}
+                      onPointerDown={ev=>{ev.currentTarget.style.transform="scale(.78)";ev.currentTarget.style.background="rgba(37,99,235,.4)";}}
+                      onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.07)";send(e);}}
+                      onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.07)";}}
                       style={{
-                        fontSize:28,background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.08)",
-                        borderRadius:14,width:48,height:48,cursor:"pointer",
+                        fontSize:22,background:"rgba(255,255,255,.07)",
+                        border:"1px solid rgba(255,255,255,.08)",
+                        borderRadius:10,width:38,height:38,cursor:"pointer",
                         display:"flex",alignItems:"center",justifyContent:"center",
-                        transition:"transform .07s,background .07s",
-                        WebkitTapHighlightColor:"transparent",userSelect:"none",
-                        animation:`emojiPop .3s ${(ri*6+ei)*0.03}s cubic-bezier(.22,1,.36,1) both`,
+                        transition:"transform .07s",
+                        WebkitTapHighlightColor:"transparent",
+                        animation:`emojiPop .25s ${(ri*6+ei)*0.025}s ease both`,
                       }}>{e}</button>
                   ))}
                 </div>
@@ -661,79 +708,60 @@ function CarromChat({onSend,onClose}){
             </div>
           )}
 
-          {/* PHRASE TAB */}
+          {/* PHRASES */}
           {tab==="phrase"&&(
-            <div style={{
-              display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,
-            }}>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
               {CHAT_PHRASES.map(({s,l},i)=>(
                 <button key={s}
-                  onPointerDown={ev=>{ev.currentTarget.style.transform="scale(.94)";ev.currentTarget.style.background="rgba(37,99,235,.5)";}}
-                  onPointerUp={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.08)";send(l);}}
-                  onPointerLeave={ev=>{ev.currentTarget.style.transform="";ev.currentTarget.style.background="rgba(255,255,255,.08)";}}
+                  onPointerDown={ev=>{ev.currentTarget.style.background="rgba(37,99,235,.5)";ev.currentTarget.style.transform="scale(.97)";}}
+                  onPointerUp={ev=>{ev.currentTarget.style.background="rgba(255,255,255,.07)";ev.currentTarget.style.transform="";send(l);}}
+                  onPointerLeave={ev=>{ev.currentTarget.style.background="rgba(255,255,255,.07)";ev.currentTarget.style.transform="";}}
                   style={{
-                    padding:"9px 10px",borderRadius:14,
-                    background:"rgba(255,255,255,.08)",
-                    border:"1px solid rgba(255,255,255,.1)",
-                    color:"rgba(255,255,255,.88)",
-                    fontSize:11,fontWeight:700,cursor:"pointer",
-                    fontFamily:T.font,textAlign:"left",
-                    transition:"transform .07s,background .07s",
-                    WebkitTapHighlightColor:"transparent",
-                    animation:`chipSlide .25s ${i*0.04}s ease both`,
-                    letterSpacing:.2,
+                    padding:"7px 10px",borderRadius:10,textAlign:"left",
+                    background:"rgba(255,255,255,.07)",border:"1px solid rgba(255,255,255,.09)",
+                    color:"rgba(255,255,255,.8)",fontSize:11,fontWeight:700,
+                    cursor:"pointer",fontFamily:T.font,
+                    transition:"background .07s,transform .07s",
+                    animation:`chipSlide .2s ${i*0.035}s ease both`,
                   }}>{s}</button>
               ))}
             </div>
           )}
 
-          {/* CUSTOM TAB */}
+          {/* CUSTOM */}
           {tab==="custom"&&(
-            <div style={{animation:"chipSlide .2s ease both"}}>
-              <div style={{
-                fontSize:10,color:"rgba(255,255,255,.35)",
-                letterSpacing:1,textTransform:"uppercase",marginBottom:8,
-              }}>Type your message</div>
-              <div style={{display:"flex",gap:8,marginBottom:10}}>
+            <div style={{animation:"chipSlide .15s ease both"}}>
+              <div style={{display:"flex",gap:6,marginBottom:8}}>
                 <input
                   ref={inputRef}
                   value={customText}
                   onChange={e=>setCustomText(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&sendCustom()}
+                  onKeyDown={e=>e.key==="Enter"&&send(customText)}
                   maxLength={50}
-                  placeholder="Say something..."
+                  placeholder="Type here..."
                   style={{
-                    flex:1,padding:"11px 14px",borderRadius:14,
+                    flex:1,padding:"9px 10px",borderRadius:10,
                     background:"rgba(255,255,255,.08)",
                     border:"1.5px solid rgba(37,99,235,.4)",
-                    color:"#fff",fontSize:13,fontFamily:T.font,
-                    outline:"none",
-                    animation:"inputGlow 2s ease-in-out infinite",
-                    caretColor:"#2563EB",
+                    color:"#fff",fontSize:12,fontFamily:T.font,
+                    outline:"none",caretColor:"#60a5fa",
                   }}
                 />
-                <button onClick={sendCustom} disabled={!customText.trim()} style={{
-                  padding:"11px 16px",borderRadius:14,border:"none",
-                  background:customText.trim()
-                    ?"linear-gradient(135deg,#2563EB,#7c3aed)"
-                    :"rgba(255,255,255,.08)",
+                <button onClick={()=>send(customText)} style={{
+                  padding:"9px 12px",borderRadius:10,border:"none",
+                  background:customText.trim()?"linear-gradient(135deg,#2563EB,#7c3aed)":"rgba(255,255,255,.08)",
                   color:customText.trim()?"#fff":"rgba(255,255,255,.3)",
-                  fontWeight:800,fontSize:13,cursor:customText.trim()?"pointer":"default",
-                  fontFamily:T.font,transition:"all .15s",
-                  boxShadow:customText.trim()?"0 4px 14px rgba(37,99,235,.4)":"none",
-                }}>Send</button>
+                  fontWeight:800,fontSize:12,cursor:"pointer",fontFamily:T.font,
+                  transition:"all .12s",
+                }}>↑</button>
               </div>
-              {/* Quick custom suggestions */}
-              <div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginBottom:6,letterSpacing:.5}}>Quick picks:</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {["Good game!","Watch out!","My turn 😤","So close!","Let's go! 🔥","Ez clap 👏"].map(q=>(
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {["GG!","Noice 🎉","Ez 😎","Let's go 🔥","Oops 😅","Rekt 💀"].map(q=>(
                   <button key={q} onClick={()=>send(q)} style={{
-                    padding:"5px 10px",borderRadius:20,
-                    background:"rgba(255,255,255,.06)",
-                    border:"1px solid rgba(255,255,255,.1)",
-                    color:"rgba(255,255,255,.6)",fontSize:10,fontWeight:600,
-                    cursor:"pointer",fontFamily:T.font,
-                    transition:"all .1s",WebkitTapHighlightColor:"transparent",
+                    padding:"4px 9px",borderRadius:16,fontSize:10,fontWeight:700,
+                    background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",
+                    color:"rgba(255,255,255,.55)",cursor:"pointer",fontFamily:T.font,
+                    WebkitTapHighlightColor:"transparent",
                   }}>{q}</button>
                 ))}
               </div>
@@ -741,7 +769,38 @@ function CarromChat({onSend,onClose}){
           )}
         </div>
       </div>
-    </div>
+
+      {/* Slide-out tab — always visible on left edge */}
+      <div onClick={onToggle} style={{
+        position:"fixed",
+        top:"50%",left:open?240:0,
+        transform:"translateY(-50%)",
+        zIndex:140,cursor:"pointer",
+        transition:"left .22s cubic-bezier(.22,1,.36,1)",
+        display:"flex",flexDirection:"column",alignItems:"center",
+        animation:"tabPulse 2.5s ease-in-out infinite",
+      }}>
+        <div style={{
+          background:"linear-gradient(180deg,#2563EB,#7c3aed)",
+          borderRadius:"0 12px 12px 0",
+          padding:"12px 7px",
+          boxShadow:"4px 0 20px rgba(37,99,235,.55)",
+          display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+          borderLeft:"none",
+          border:"1.5px solid rgba(255,255,255,.15)",
+          borderLeft:"none",
+        }}>
+          <span style={{fontSize:18,lineHeight:1}}>💬</span>
+          <span style={{
+            fontSize:9,fontWeight:900,color:"rgba(255,255,255,.8)",
+            letterSpacing:1,textTransform:"uppercase",
+            writingMode:"vertical-rl",textOrientation:"mixed",
+            transform:"rotate(180deg)",
+          }}>Chat</span>
+          <span style={{fontSize:12,color:"rgba(255,255,255,.6)"}}>{open?"◀":"▶"}</span>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1739,6 +1798,7 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const [timeLeft,setTimeLeft]=useState(20);
   const [chatOpen,setChatOpen]=useState(false);
   const [chatMsgs,setChatMsgs]=useState({});
+  const [chatLog,setChatLog]=useState([]);// ordered message history
   const chatTimersRef=useRef({});
   const unsubRef=useRef(null);
   const unsubChatRef=useRef(null);
@@ -1746,11 +1806,13 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   const timerRef=useRef(null);
   const gsRef=useRef(null);// mirrors gs for optimistic writes
   const writingRef=useRef(false);// suppress echo during own writes
+  const lastWriteTs=useRef(0);// timestamp of our last write — reject echoes of it
   // Use a ref-wrapped setter so the dbListen closure never goes stale
   const showChatBubble=useCallback((name,text)=>{
     clearTimeout(chatTimersRef.current[name+"_die"]);
     clearTimeout(chatTimersRef.current[name+"_clear"]);
     setChatMsgs(p=>({...p,[name]:{text,ts:Date.now(),dying:false}}));
+    setChatLog(p=>[...p.slice(-49),{name,text,ts:Date.now()}]);// keep last 50
     chatTimersRef.current[name+"_die"]=setTimeout(()=>setChatMsgs(p=>p[name]?{...p,[name]:{...p[name],dying:true}}:p),2700);
     chatTimersRef.current[name+"_clear"]=setTimeout(()=>setChatMsgs(p=>{const n={...p};delete n[name];return n;}),3100);
   },[]);
@@ -1783,7 +1845,8 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
         const skipUpdate={...g,turnIdx:next,lastAction:Date.now()};
         gsRef.current=skipUpdate;
         setGs({...skipUpdate});
-        writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+        lastWriteTs.current=skipUpdate.lastAction;
+        writingRef.current=true;setTimeout(()=>{writingRef.current=false;},1500);
         dbSet(`rooms/${roomCode}/gameState`,skipUpdate).catch(()=>{});
       }
     },1000);
@@ -1792,7 +1855,16 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
   useEffect(()=>{
     const unsub=dbListen(`rooms/${roomCode}/gameState`,g=>{
       if(!g)return;
+      // Reject echo of our own write
+      if(g.lastAction&&g.lastAction===lastWriteTs.current){gsRef.current=g;return;}
       if(writingRef.current){gsRef.current=g;return;}
+      // If we already have a roundResult locally and incoming has same round+claimerName, skip to avoid double-trigger
+      const prev=gsRef.current;
+      if(prev?.roundResult&&g.roundResult&&
+         prev.roundResult.claimerName===g.roundResult.claimerName&&
+         prev.round===g.round){
+        gsRef.current=g;return;// silently update ref but don't re-render round result
+      }
       gsRef.current=g;
       setGs({...g});// spread forces React re-render
       const cp=g.activePlayers?.[g.turnIdx];
@@ -1869,14 +1941,15 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const next=(turnIdx+1)%activePlayers.length;
     const newHand=[...myHand.filter((_,i)=>!dropIdxs.includes(i)),drew];
     // Optimistic: update UI instantly, write to Firebase in background
-    const update={stock:ns,pile:np,hands:{...hands,[myName]:newHand},turnIdx:next,lastAction:Date.now()};
+    const now=Date.now();lastWriteTs.current=now;
+    const update={stock:ns,pile:np,hands:{...hands,[myName]:newHand},turnIdx:next,lastAction:now};
     const merged={...gsRef.current,...update,hands:{...gsRef.current?.hands,[myName]:newHand}};
     gsRef.current=merged;
     setGs(merged);// instant UI update — no waiting for Firebase round-trip
     setDrawFrom(null);setDropIdxs([]);
     setMsg("");
     SFX.swap();
-    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},1500);
     dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
 
@@ -1896,14 +1969,15 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const winner=newActive.length<=1?newActive[0]||activePlayers[0]:null;
     const gained={};activePlayers.forEach(n=>{gained[n]=(ns[n]||0)-(scores[n]||0);});
     const hist=[...(gs.history||[]),{round:round||1,winner:clWon?myName:"❌",gained}];
+    const now=Date.now();lastWriteTs.current=now;
     const update={scores:ns,eliminated:newElim,activePlayers:newActive,
       roundResult:{results,claimerName:myName,claimerWon:clWon,claimerPts:clPts,lowestPts:lowPts,justElim,newScores:ns,shown:false},
-      history:hist,gameWinner:winner,lastAction:Date.now()};
+      history:hist,gameWinner:winner,lastAction:now};
     const merged={...gsRef.current,...update};
     gsRef.current=merged;
     setGs(merged);
     if(clWon)SFX.win();else SFX.fail();
-    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},2000);// hold longer to block echo
     dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
 
@@ -1911,12 +1985,13 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     const ap=gs.activePlayers,nr=(round||1)+1,allP=gs.allPlayers||ap;
     const d=shuffle(makeDeck()),wc=d[0],dr=d.slice(1);
     const h={};let cur=0;for(const n of ap){h[n]=dr.slice(cur,cur+5);cur+=5;}
+    const now=Date.now();lastWriteTs.current=now;
     const update={stock:dr.slice(cur+1),pile:[dr[cur]],wildCard:wc,hands:h,
-      turnIdx:nr%ap.length,round:nr,roundResult:null,lastAction:Date.now(),allPlayers:allP};
+      turnIdx:nr%ap.length,round:nr,roundResult:null,lastAction:now,allPlayers:allP};
     const merged={...gsRef.current,...update};
     gsRef.current=merged;
-    setGs(merged);// instant next round
-    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+    setGs(merged);
+    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},2000);
     dbSet(`rooms/${roomCode}/gameState`,merged).catch(()=>{});
   }
 
@@ -2035,8 +2110,13 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={sl} penalty={penalty||50}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={gs.history||[]} allPlayers={allPlayers} scores={scores} scoreLimit={sl}/>}
       {/* Carrom Pool chat — FloatingFAB + tray */}
-      <ChatFAB onClick={()=>setChatOpen(p=>!p)} hasNew={false}/>
-      {chatOpen&&<CarromChat onSend={sendChat} onClose={()=>setChatOpen(false)}/>}
+      <ChatSidePanel
+        open={chatOpen}
+        onToggle={()=>setChatOpen(p=>!p)}
+        onSend={sendChat}
+        chatLog={chatLog}
+        myName={myName}
+      />
     </div>
   );
 }
@@ -2067,12 +2147,13 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
   const [timeLeft,setTimeLeft]=useState(30);
   const [chatOpen,setChatOpen]=useState(false);
   const [myChatMsg,setMyChatMsg]=useState(null);
+  const [chatLog,setChatLog]=useState([]);
   const myChatTimer=useRef(null);
 
   function sendLocalChat(text){
     clearTimeout(myChatTimer.current);
     setMyChatMsg({text,dying:false});
-    setChatOpen(false);
+    setChatLog(p=>[...p.slice(-49),{name:"You",text,ts:Date.now()}]);
     myChatTimer.current=setTimeout(()=>setMyChatMsg(p=>p?{...p,dying:true}:p),2700);
     setTimeout(()=>setMyChatMsg(null),3100);
   }
@@ -2353,8 +2434,13 @@ function AIGameScreen({players,scoreLimit,penaltyPoints,onQuit}){
 
       {showRules&&<RulesModal onClose={()=>setShowRules(false)} limit={scoreLimit} penalty={penaltyPoints}/>}
       {showHistory&&<HistoryModal onClose={()=>setShowHistory(false)} history={history} allPlayers={allPlayers} scores={scores} scoreLimit={scoreLimit}/>}
-      <ChatFAB onClick={()=>setChatOpen(p=>!p)} hasNew={false}/>
-      {chatOpen&&<CarromChat onSend={sendLocalChat} onClose={()=>setChatOpen(false)}/>}
+      <ChatSidePanel
+        open={chatOpen}
+        onToggle={()=>setChatOpen(p=>!p)}
+        onSend={sendLocalChat}
+        chatLog={chatLog}
+        myName="You"
+      />
     </div>
   );
 }
