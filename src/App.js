@@ -270,6 +270,12 @@ const BASE_CSS=`
   @keyframes msgFadeIn{0%{opacity:0;transform:translateY(12px);}100%{opacity:1;transform:none;}}
   @keyframes shimmerText{0%{background-position:200% center;}100%{background-position:-200% center;}}
   @keyframes ringPulse{0%{transform:scale(.95);opacity:.6;}50%{transform:scale(1.05);opacity:1;}100%{transform:scale(.95);opacity:.6;}}
+  @keyframes skullDrop{0%{transform:translateY(-60px) rotate(-20deg) scale(.4);opacity:0;}55%{transform:translateY(8px) rotate(8deg) scale(1.15);}75%{transform:translateY(-4px) rotate(-4deg) scale(.95);}100%{transform:translateY(0) rotate(0deg) scale(1);opacity:1;}}
+  @keyframes shakeX{0%,100%{transform:translateX(0);}15%{transform:translateX(-10px);}30%{transform:translateX(10px);}45%{transform:translateX(-8px);}60%{transform:translateX(8px);}75%{transform:translateX(-5px);}90%{transform:translateX(5px);}}
+  @keyframes loserBg{0%{opacity:0;}100%{opacity:1;}}
+  @keyframes loserCard{0%{opacity:0;transform:scale(.7) translateY(40px);}60%{transform:scale(1.03) translateY(-6px);}100%{opacity:1;transform:scale(1) translateY(0);}}
+  @keyframes glitchText{0%,100%{clip-path:inset(0 0 0 0);}20%{clip-path:inset(10% 0 60% 0);transform:translateX(-4px);}40%{clip-path:inset(40% 0 20% 0);transform:translateX(4px);}60%{clip-path:inset(70% 0 5% 0);transform:translateX(-2px);}80%{clip-path:inset(20% 0 70% 0);transform:translateX(2px);}}
+  @keyframes cryFloat{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-8px) scale(1.1);}}
   @keyframes emojiPop{0%{transform:scale(0) rotate(-30deg);opacity:0;}60%{transform:scale(1.3) rotate(6deg);}100%{transform:scale(1) rotate(0deg);opacity:1;}}
   @keyframes chipSlide{0%{opacity:0;transform:translateX(20px);}100%{opacity:1;transform:none;}}
   @keyframes trayUp{0%{opacity:0;transform:translateY(100%);}100%{opacity:1;transform:translateY(0);}}
@@ -513,8 +519,8 @@ const ChatBubble=memo(({msg,isMe,dying,name})=>{
 function ChatFAB({onClick,hasNew}){
   return(
     <button onClick={onClick} style={{
-      position:"fixed",bottom:100,right:12,
-      width:46,height:46,borderRadius:"50%",border:"none",
+      position:"fixed",top:68,left:12,
+      width:40,height:40,borderRadius:"50%",border:"none",
       background:hasNew
         ?"linear-gradient(135deg,#10B981,#059669)"
         :"linear-gradient(135deg,#2563EB,#7c3aed)",
@@ -805,15 +811,130 @@ function HistoryModal({onClose,history,allPlayers,scores,scoreLimit}){
   );
 }
 
+const LOSER_MSGS=[
+  "Better luck next time! 😢",
+  "You gave it your all! 💪",
+  "The cards weren't with you 🃏",
+  "Revenge is a dish best served cold 🥶",
+  "Even legends fall sometimes 😤",
+  "Get back up and fight! ⚡",
+  "Score limit hit — you're out! 💀",
+];
+const RAIN_DROPS=Array.from({length:20},(_,i)=>({
+  left:`${(i*5.2+Math.random()*4).toFixed(1)}%`,
+  delay:`${(Math.random()*1.5).toFixed(2)}s`,
+  dur:`${(1.2+Math.random()*.8).toFixed(2)}s`,
+  emoji:["💀","😭","💔","😢","☠️"][i%5],
+}));
+
 function EliminatedBanner({name,onClose}){
+  const [phase,setPhase]=useState(0);
+  const msg=LOSER_MSGS[Math.floor(Math.random()*LOSER_MSGS.length)];
+  useEffect(()=>{
+    const t1=setTimeout(()=>setPhase(1),80);
+    const t2=setTimeout(()=>setPhase(2),500);
+    return()=>{clearTimeout(t1);clearTimeout(t2);};
+  },[]);
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(8px)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <Panel style={{padding:"40px 36px",textAlign:"center",maxWidth:320,width:"92%"}}>
-        <div style={{fontSize:56,marginBottom:12}}>💀</div>
-        <div style={{fontWeight:900,fontSize:24,marginBottom:6,color:T.red}}>Eliminated</div>
-        <div style={{color:T.muted,fontSize:14,marginBottom:24}}><strong style={{color:T.ink}}>{name}</strong> reached the score limit</div>
-        <Btn onClick={onClose}>Continue →</Btn>
-      </Panel>
+    <div style={{
+      position:"fixed",inset:0,zIndex:300,
+      background:"linear-gradient(145deg,#1a0000 0%,#2d0a0a 50%,#0a0000 100%)",
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      overflow:"hidden",fontFamily:T.font,
+      animation:"loserBg .3s ease both",
+    }}>
+      {/* Falling emoji rain */}
+      {RAIN_DROPS.map((d,i)=>(
+        <div key={i} style={{
+          position:"absolute",top:"-30px",left:d.left,
+          fontSize:18,
+          animation:`confettiFall ${d.dur} ${d.delay} ease-in infinite`,
+          opacity:.4,pointerEvents:"none",zIndex:1,
+        }}>{d.emoji}</div>
+      ))}
+
+      {/* Red glow rings */}
+      <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",
+        border:"1px solid rgba(239,68,68,.2)",
+        animation:"ringPulse 1.8s ease-in-out infinite",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",width:260,height:260,borderRadius:"50%",
+        border:"1px solid rgba(239,68,68,.35)",
+        animation:"ringPulse 1.8s .3s ease-in-out infinite",pointerEvents:"none"}}/>
+
+      {/* Main card */}
+      <div style={{
+        position:"relative",zIndex:10,
+        background:"rgba(0,0,0,.6)",
+        backdropFilter:"blur(24px)",WebkitBackdropFilter:"blur(24px)",
+        border:"1.5px solid rgba(239,68,68,.3)",
+        borderRadius:28,padding:"32px 28px 26px",
+        textAlign:"center",width:"88%",maxWidth:340,
+        boxShadow:"0 32px 80px rgba(239,68,68,.3),0 0 0 1px rgba(239,68,68,.1)",
+        animation:phase>=1?"loserCard .55s cubic-bezier(.22,1,.36,1) both":"none",
+      }}>
+        {/* Skull */}
+        <div style={{
+          fontSize:72,lineHeight:1,marginBottom:4,
+          animation:phase>=1?"skullDrop .6s cubic-bezier(.22,1,.36,1) both":"none",
+          filter:"drop-shadow(0 0 20px rgba(239,68,68,.6))",
+        }}>💀</div>
+
+        {/* Crying emoji floating */}
+        {phase>=2&&(
+          <div style={{
+            fontSize:22,marginBottom:6,
+            animation:"cryFloat 2s ease-in-out infinite",
+          }}>😭</div>
+        )}
+
+        {/* ELIMINATED text with glitch */}
+        {phase>=1&&(
+          <div style={{position:"relative",marginBottom:4}}>
+            <div style={{
+              fontSize:13,fontWeight:900,letterSpacing:6,
+              textTransform:"uppercase",color:"#EF4444",
+              animation:"shakeX .6s .3s ease both",
+              textShadow:"0 0 20px rgba(239,68,68,.7)",
+            }}>Eliminated</div>
+          </div>
+        )}
+
+        {/* Player name */}
+        {phase>=2&&(
+          <div style={{
+            fontSize:28,fontWeight:900,letterSpacing:-1,
+            color:"#fff",marginBottom:6,
+            animation:"winnerNameSlide .4s cubic-bezier(.22,1,.36,1) both",
+            textShadow:"0 2px 12px rgba(239,68,68,.4)",
+          }}>{name}</div>
+        )}
+
+        {/* Loser message */}
+        {phase>=2&&(
+          <div style={{
+            fontSize:12,color:"rgba(255,255,255,.5)",
+            marginBottom:22,animation:"msgFadeIn .5s .1s ease both",
+            lineHeight:1.5,padding:"0 8px",
+          }}>{msg}</div>
+        )}
+
+        {/* Continue button */}
+        {phase>=2&&(
+          <button onClick={()=>{SFX.tap();onClose();}} style={{
+            width:"100%",padding:"13px",borderRadius:14,border:"none",
+            background:"linear-gradient(135deg,#EF4444,#DC2626)",
+            color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",
+            fontFamily:T.font,letterSpacing:.3,
+            boxShadow:"0 6px 24px rgba(239,68,68,.5)",
+            animation:"msgFadeIn .4s .2s ease both",
+            transition:"transform .1s",
+          }}
+          onPointerDown={e=>e.currentTarget.style.transform="scale(.96)"}
+          onPointerUp={e=>e.currentTarget.style.transform=""}
+          >Continue →</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -1641,32 +1762,32 @@ function OnlineGameScreen({roomCode,myName,onQuit}){
     try{await dbSet(`rooms/${roomCode}/chat/${myName.replace(/[^a-zA-Z0-9]/g,"_")}`,{name:myName,text,ts:Date.now()});}catch(_){}
   }
 
-  // Start a fresh 20s countdown — called whenever our turn begins
+  // Fixed timer — uses a ref counter to avoid React batching issues
+  const timeCountRef=useRef(0);
   function startTimer(){
     clearInterval(timerRef.current);
+    timeCountRef.current=20;
     setTimeLeft(20);
     timerRef.current=setInterval(()=>{
-      setTimeLeft(p=>{
-        if(p<=1){clearInterval(timerRef.current);return 0;}
-        return p-1;
-      });
+      timeCountRef.current-=1;
+      const t=timeCountRef.current;
+      setTimeLeft(t);
+      if(t===5)SFX.timerWarn();
+      if(t<=0){
+        clearInterval(timerRef.current);
+        // Auto-skip: use ref for latest state, not stale closure
+        const g=gsRef.current;
+        if(!g||g.activePlayers?.[g.turnIdx]!==myName)return;
+        vibrate([200,80,200]);
+        const next=(g.turnIdx+1)%g.activePlayers.length;
+        const skipUpdate={...g,turnIdx:next,lastAction:Date.now()};
+        gsRef.current=skipUpdate;
+        setGs({...skipUpdate});
+        writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
+        dbSet(`rooms/${roomCode}/gameState`,skipUpdate).catch(()=>{});
+      }
     },1000);
   }
-
-  // Auto-skip when timer hits 0 (our turn only)
-  useEffect(()=>{
-    if(timeLeft===5)SFX.timerWarn();
-    if(timeLeft!==0||!gsRef.current)return;
-    const g=gsRef.current;
-    if(g.activePlayers[g.turnIdx]!==myName)return;
-    vibrate([200,80,200]);
-    const next=(g.turnIdx+1)%g.activePlayers.length;
-    const skipUpdate={...g,turnIdx:next,lastAction:Date.now()};
-    gsRef.current=skipUpdate;
-    setGs({...skipUpdate});
-    writingRef.current=true;setTimeout(()=>{writingRef.current=false;},600);
-    dbSet(`rooms/${roomCode}/gameState`,skipUpdate).catch(()=>{});
-  },[timeLeft]);// eslint-disable-line
 
   useEffect(()=>{
     const unsub=dbListen(`rooms/${roomCode}/gameState`,g=>{
